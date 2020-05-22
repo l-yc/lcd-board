@@ -16,6 +16,7 @@ class App {
     // Configure Express to use EJS
     this.express.set('views', path.join(__dirname, 'views'));
     this.express.set('view engine', 'ejs');
+    this.express.use(express.static(path.join(__dirname, 'public')));
   }
 
   private mountRoutes(): void {

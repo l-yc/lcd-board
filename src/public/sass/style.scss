@@ -1,0 +1,7 @@
+/* Scale canvas with resize attribute to full size */
+* { border: solid 2px red; }
+
+canvas[resize] {
+  width: 100%;
+  height: 100%;
+}
