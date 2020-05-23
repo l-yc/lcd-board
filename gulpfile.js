@@ -9,7 +9,7 @@ gulp.task('styles', function() {
 
 gulp.task('scripts', function() {
   return gulp.src('./node_modules/paper/dist/paper-full.min.js')
-    .pipe(gulp.dest('./src/public/js/'));
+    .pipe(gulp.dest('./src/public/js/lib/paper.min.js'));
 });
 
 //Watch task
