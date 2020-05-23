@@ -11,7 +11,12 @@ class Socket {
 
   private mountListeners(): void {
     this.io.on('connection', (socket: any) => {
-      console.log('a user connected');
+      console.log('a user connected', socket.id);
+
+      socket.on('event', (event: any) => {
+        console.log('received event %o', event);
+        socket.broadcast.emit('event', event);
+      });
     });
   }
 };
