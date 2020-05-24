@@ -3,7 +3,7 @@ import http from 'http';
 import app from './App';
 import Socket from './Socket';
 
-import config from '../config/main';
+let config = require('../config/main'); // config file is not a module
 
 let httpServer = new http.Server(app);
 let socketServer = new Socket(httpServer);
