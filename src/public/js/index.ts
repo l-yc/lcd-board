@@ -1,12 +1,18 @@
 'use strict';
+import io from 'socket.io-client';
+import paper from 'paper';
+
 console.clear();
 
-function log(...args) {
+function log(...args: any) {
   let time = new Date().toUTCString();
   console.log(`[${time}]`, '[LCD-BOARD]', ...args);
 }
 
 class SocketServer {
+  private socket: SocketIOClient.Socket;
+  public drawingTool: DrawingTool | null;
+  private room: string | null;
 
   constructor() {
     this.socket = io({
@@ -17,15 +23,25 @@ class SocketServer {
       log('connected!');
     });
 
-    this.socket.on('event', (event) => {
+    this.socket.on('event', (event: any) => {
       event.isForeign = true;
       if (this.drawingTool) {
         this.drawingTool.handle(event);
       }
     });
+
+    this.drawingTool = null;
+    this.room = null;
   }
 
-  send(event) {
+  join(room: string | null) {
+    this.room = room;
+    this.socket.emit('join', room);
+  }
+
+  send(event: any) {
+    if (!this.room) return; // not initialised, FIXME throw an error
+
     // We manually deconstruct the point object because paperjs
     // serializes it into Array instead of JSON for newer versions
     // See: https://github.com/paperjs/paper.js/issues/1318
@@ -41,6 +57,10 @@ class SocketServer {
 };
 
 class DrawingTool {
+  private tool: paper.Tool;
+  private path: paper.Path | null;
+  public channel: SocketServer | null;
+
   constructor() {
     // Create a simple drawing tool:
     let tool = new paper.Tool();
@@ -50,15 +70,18 @@ class DrawingTool {
     // Define a mousedown and mousedrag handler
     tool.onMouseDown = this.handle.bind(this); 
     tool.onMouseDrag = this.handle.bind(this); 
+
+    this.path = null;
+    this.channel = null;
   }
 
-  handle(event) {
+  handle(event: any) {
     log('handling', event);
-    if (event.type == 'mousedown') {
+    if (event.type == 'mousedown' || this.path === null) {
       this.path = new paper.Path();
-      this.path.strokeColor = 'black';
+      this.path.strokeColor = new paper.Color('black');
     }
-    this.path.add(event.point);
+    if (event.point) this.path.add(event.point);
     if (this.channel && !event.isForeign) {
       this.channel.send(event);
     }
@@ -76,4 +99,6 @@ window.onload = () => {
 
   socketServer.drawingTool = drawingTool;
   drawingTool.channel = socketServer;
+
+  socketServer.join(prompt('Join a room:'));
 };
