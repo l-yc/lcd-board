@@ -2,18 +2,21 @@
   "name": "lcd-board",
   "version": "1.0.0",
   "description": "Whiteboard App",
-  "main": "index.js",
+  "main": "./dist/src/server.js",
   "repository": "",
   "author": "l-yc",
   "license": "MIT",
   "private": true,
   "scripts": {
+    "start": "node ./dist/src/server.js",
+    "debug": "DEBUG=lcd-board:* nodemon ./dist/src/server.js",
     "serve": "yarn ts-node-dev src/server.ts"
   },
   "devDependencies": {
     "css-loader": "^3.5.3",
     "gulp": "^4.0.2",
     "gulp-sass": "^4.1.0",
+    "gulp-typescript": "^6.0.0-alpha.1",
     "ts-loader": "^7.0.4",
     "ts-node-dev": "^1.0.0-pre.44",
     "typescript": "^3.9.3",
