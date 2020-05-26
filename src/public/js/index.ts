@@ -55,7 +55,7 @@ class SocketServer {
           member.handle(drawEvent.event);
           break;
         } else {
-          log('unknown member: ' + drawEvent.originUserId as string + 'is drawing')
+          log('unknown member: ' + drawEvent.originUserId + ' is drawing, ignoring user')
         }
       }
     });
@@ -97,7 +97,7 @@ class SocketServer {
         y: event.point.y
       },
       color: activeColor,
-      size: activeSize
+      size: getActiveDrawingTool().size
     });
   }
 
@@ -106,8 +106,13 @@ class SocketServer {
 class DrawingTool {
   private tool: paper.Tool;
   private path: paper.Path | null;
+
   public channel: SocketServer | null;
+
+  //Drawing tool properties
   readonly name: string;
+  public size: number = 2;
+
 
   constructor(name: string) {
     // Create a simple drawing tool:
@@ -129,7 +134,7 @@ class DrawingTool {
     if (event.type == 'mousedown' || this.path === null) {
       this.path = new paper.Path();
       this.path.strokeColor = new paper.Color(event.color || activeColor);
-      this.path.strokeWidth = event.size || activeSize;
+      this.path.strokeWidth = event.size || this.size;
     }
     if (event.point) this.path.add(event.point);
     if (this.channel && !event.isForeign) {
@@ -158,8 +163,6 @@ let activeDrawingToolIndex = 0;
 let drawingColors: string[] = [];
 let activeColor: string = '#000000';
 
-let drawingSizes: number[] = [];
-let activeSize: number = 2;
 
 function setActiveDrawingToolIndex(index: number) {
   setActiveDrawingTool(drawingTools[index]);
@@ -176,9 +179,7 @@ function getActiveDrawingTool() {
 function setActiveColor(color: string) {
   activeColor = color;
 }
-function setActiveSize(size: number) {
-  activeSize = size;
-}
+
 
 window.onload = () => {
   paper.setup('myCanvas');
