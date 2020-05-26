@@ -23,7 +23,8 @@ class Socket {
   private mountListeners(data: Socket): void {
     function leaveRoom(socket: any, room: string): void {
       socket.leave(room);
-      data.userTracker.get(socket.id)!.room = null;
+      let user = data.userTracker.get(socket.id)
+      if (user) user.room = null;
       let idx = data.roomTracker[room].users.indexOf(socket.id);
       data.roomTracker[room].users.splice(idx, 1);
     };
@@ -40,7 +41,8 @@ class Socket {
         if (!data.userTracker.has(socket.id)) {
           data.userTracker.set(socket.id, { username: null, room: null });
         }
-        data.userTracker.get(socket.id)!.username = username;
+        let user = data.userTracker.get(socket.id)
+        if (user) user.username = username;
       });
         
       socket.on('join', (room: string) => {
@@ -48,7 +50,7 @@ class Socket {
         console.log('%s joined %s', socket.id, room);
         socket.join(room);
 
-        let user = <User> data.userTracker.get(socket.id);
+        let user = data.userTracker.get(socket.id) as User;
         if (user.room) {
           leaveRoom(socket, room);
         };
@@ -63,16 +65,22 @@ class Socket {
       });
 
       socket.on('leave', () => {
-        let room = <string> data.userTracker.get(socket.id)!.room;
-        leaveRoom(socket, room);
-        data.io.to(room).emit('room info', data.roomTracker[room].users);
+        let room = data.userTracker.get(socket.id)?.room as string | null;
+        if (room) {
+          leaveRoom(socket, room);
+          data.io.to(room).emit('room info', data.roomTracker[room].users);
+        }
       });
 
-      socket.on('event', (event: any) => {
+      socket.on('draw event', (event: any) => {
         console.log('received event %o', event);
-        let room = data.userTracker.get(socket.id)!.room;
-        if (!room) return; // user is not subscribed to any room, don't broadcast
-        socket.broadcast.to(room).emit('event', event);
+        let room = data.userTracker.get(socket.id)?.room;
+        if (!room) {
+          // user is not subscribed to any room, don't broadcast
+          console.log('invalid event: the user ' + socket.id + ' is not subscribed to any room!');
+          return;
+        } 
+        socket.broadcast.to(room).emit('draw event', {'event' : event, 'originUserId': socket.id});
       });
     });
   }
