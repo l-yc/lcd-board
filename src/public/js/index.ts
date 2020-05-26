@@ -9,10 +9,29 @@ function log(...args: any) {
   console.log(`[${time}]`, '[LCD-BOARD]', ...args);
 }
 
+class UI {
+
+  constructor() {}
+
+  updateRoomInfo(info: string[]) {
+    let members = <HTMLElement> document.querySelector('.room-info .members-container .members');
+    while (members.firstChild) members.removeChild(members.firstChild);
+    info.forEach((user: string) => {
+      let u = document.createElement('span');
+      u.innerHTML = user;
+      members.appendChild(u);
+    });
+  }
+
+};
+
 class SocketServer {
   private socket: SocketIOClient.Socket;
   public drawingTools: DrawingTool[] = [];
+  private username: string | null;
   private room: string | null;
+
+  public ui: UI | null;
 
   constructor() {
     this.socket = io({
@@ -32,8 +51,22 @@ class SocketServer {
       }
     });
 
-    this.drawingTools = [];
+    this.socket.on('room info', (info: any) => {
+      if (this.ui) {
+        this.ui.updateRoomInfo(info);
+      }
+    });
+
+    this.username = null;
     this.room = null;
+
+    this.drawingTools = [];
+    this.ui = null;
+  }
+
+  register(username: string | null) {
+    this.username = username;
+    this.socket.emit('register', username);
   }
 
   join(room: string | null) {
@@ -109,6 +142,7 @@ class DrawingTool {
   }
 };
 
+let ui: UI | null = null;
 let socketServer: SocketServer | null = null;
 let drawingTools: DrawingTool[] = [];
 var activeDrawingToolIndex = 0;
@@ -155,9 +189,20 @@ window.onload = () => {
     }
   }
 
+  ui = new UI();
   socketServer = new SocketServer();
   if (socketServer?.drawingTools) socketServer.drawingTools = drawingTools;
   for (var tool of drawingTools) tool.channel = socketServer;
 
-  socketServer.join(prompt('Join a room:'));
+  socketServer.ui = ui;
+
+  let form = <HTMLFormElement> document.querySelector('#login-form');
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    let data = new FormData(form!);
+    let uname = <string> data.get('username');
+    let room = <string> data.get('room');
+    socketServer!.register(uname);
+    socketServer!.join(room);
+  });
 };

@@ -67,7 +67,7 @@ gulp.task('watch main', function() {
 
 gulp.task('watch', gulp.parallel(
   'watch styles',
-  //'watch scripts',
+  'watch scripts',
   'watch views',
   'watch main'
 ));
