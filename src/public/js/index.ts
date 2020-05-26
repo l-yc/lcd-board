@@ -11,7 +11,7 @@ function log(...args: any) {
 
 class SocketServer {
   private socket: SocketIOClient.Socket;
-  public drawingTool: DrawingTool | null;
+  public drawingTools: DrawingTool[] = [];
   private room: string | null;
 
   constructor() {
@@ -25,12 +25,14 @@ class SocketServer {
 
     this.socket.on('event', (event: any) => {
       event.isForeign = true;
-      if (this.drawingTool) {
-        this.drawingTool.handle(event);
+      if (this.drawingTools) {
+        for (var tool of this.drawingTools) {
+          tool.handle(event);
+        }
       }
     });
 
-    this.drawingTool = null;
+    this.drawingTools = [];
     this.room = null;
   }
 
@@ -50,7 +52,9 @@ class SocketServer {
       point: {
         x: event.point.x,
         y: event.point.y
-      }
+      },
+      color: getActiveDrawingTool().getColor(),
+      size: getActiveDrawingTool().getSize()
     });
   }
 
@@ -60,8 +64,10 @@ class DrawingTool {
   private tool: paper.Tool;
   private path: paper.Path | null;
   public channel: SocketServer | null;
+  public color: string | null;
+  public size: number | null;
 
-  constructor() {
+  constructor(color: string | null, size: number | null) {
     // Create a simple drawing tool:
     let tool = new paper.Tool();
 
@@ -73,32 +79,85 @@ class DrawingTool {
 
     this.path = null;
     this.channel = null;
+
+    this.color = color;
+    this.size = size;
   }
 
   handle(event: any) {
     log('handling', event);
     if (event.type == 'mousedown' || this.path === null) {
       this.path = new paper.Path();
-      this.path.strokeColor = new paper.Color('black');
+      this.path.strokeColor = new paper.Color(event.color || this.getColor());
+      this.path.strokeWidth = event.size || this.getSize();
     }
     if (event.point) this.path.add(event.point);
     if (this.channel && !event.isForeign) {
       this.channel.send(event);
     }
   }
+
+  getColor(): string {
+    return this.color || globalColor;
+  }
+  getSize(): number {
+    return this.size || globalSize;
+  }
+
+  activate() {
+    this.tool.activate();
+  }
 };
 
-let socketServer = null;
-let drawingTool = null;
+let socketServer: SocketServer | null = null;
+let drawingTools: DrawingTool[] = [];
+var activeDrawingToolIndex = 0;
+let globalColor: string = '#000000';
+let globalSize: number = 2;
+
+function setActiveDrawingToolIndex(index: number) {
+  setActiveDrawingTool(drawingTools[index]);
+}
+function setActiveDrawingTool(tool: DrawingTool) {
+  tool.activate();
+  let idx = drawingTools.indexOf(tool);
+  if (idx != -1) activeDrawingToolIndex = idx;
+}
+function getActiveDrawingTool() {
+  return drawingTools[activeDrawingToolIndex];
+}
 
 window.onload = () => {
   paper.setup('myCanvas');
 
-  drawingTool = new DrawingTool();
-  socketServer = new SocketServer();
+  drawingTools = [
+    new DrawingTool('#000000', null), 
+    new DrawingTool('#ff0000', null), 
+    new DrawingTool('#ff8800', null), 
+    new DrawingTool('#eeee00', null), 
+    new DrawingTool('#00dd00', null), 
+    new DrawingTool('#0088ff', null),
+    new DrawingTool('#ee00ee', null),
+    new DrawingTool('#aa00aa', null),
+  ];
 
-  socketServer.drawingTool = drawingTool;
-  drawingTool.channel = socketServer;
+  let toolPickerContainer = document.getElementById('toolPickerContainer');
+  if (toolPickerContainer) {
+    for (var i in drawingTools) {
+      let tool = drawingTools[i];
+      let button = document.createElement("button");
+      if (tool.color) button.style.backgroundColor = tool.color;
+      button.classList.add('colorOption');
+      button.onclick = function () {
+        setActiveDrawingTool(tool);
+      }
+      toolPickerContainer.appendChild(button);
+    }
+  }
+
+  socketServer = new SocketServer();
+  if (socketServer?.drawingTools) socketServer.drawingTools = drawingTools;
+  for (var tool of drawingTools) tool.channel = socketServer;
 
   socketServer.join(prompt('Join a room:'));
 };
