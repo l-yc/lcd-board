@@ -14,13 +14,19 @@ class UI {
   constructor() {}
 
   updateRoomInfo(info: string[]) {
-    let members = <HTMLElement> document.querySelector('.room-info .members-container .members');
-    while (members.firstChild) members.removeChild(members.firstChild);
-    info.forEach((user: string) => {
+    let members = document.querySelector('.room-info .members-container .members') as HTMLElement;
+    if (!members) { return }
+
+    drawingMembers = [];
+    members.innerHTML = ""; 
+
+    for (let userId of info) {
+      drawingMembers.push(new DrawingMember(userId));
+
       let u = document.createElement('span');
-      u.innerHTML = user;
+      u.innerText = userId;
       members.appendChild(u);
-    });
+    };
   }
 
 };
@@ -42,11 +48,14 @@ class SocketServer {
       log('connected!');
     });
 
-    this.socket.on('event', (event: any) => {
-      event.isForeign = true;
-      if (this.drawingTools) {
-        for (var tool of this.drawingTools) {
-          tool.handle(event);
+    this.socket.on('draw event', (drawEvent: any) => {
+      log('received draw event');
+      for (let member of drawingMembers) {
+        if (member.name == drawEvent.originUserId) {
+          member.handle(drawEvent.event);
+          break;
+        } else {
+          log('unknown member: ' + drawEvent.originUserId as string + 'is drawing')
         }
       }
     });
@@ -80,14 +89,15 @@ class SocketServer {
     // We manually deconstruct the point object because paperjs
     // serializes it into Array instead of JSON for newer versions
     // See: https://github.com/paperjs/paper.js/issues/1318
-    this.socket.emit('event', {
+    log('sending draw event');
+    this.socket.emit('draw event', {
       type: event.type,
       point: {
         x: event.point.x,
         y: event.point.y
       },
-      color: getActiveDrawingTool().getColor(),
-      size: getActiveDrawingTool().getSize()
+      color: activeColor,
+      size: activeSize
     });
   }
 
@@ -97,10 +107,9 @@ class DrawingTool {
   private tool: paper.Tool;
   private path: paper.Path | null;
   public channel: SocketServer | null;
-  public color: string | null;
-  public size: number | null;
+  readonly name: string;
 
-  constructor(color: string | null, size: number | null) {
+  constructor(name: string) {
     // Create a simple drawing tool:
     let tool = new paper.Tool();
 
@@ -110,19 +119,17 @@ class DrawingTool {
     tool.onMouseDown = this.handle.bind(this); 
     tool.onMouseDrag = this.handle.bind(this); 
 
+    this.name = name;
     this.path = null;
     this.channel = null;
-
-    this.color = color;
-    this.size = size;
   }
 
   handle(event: any) {
     log('handling', event);
     if (event.type == 'mousedown' || this.path === null) {
       this.path = new paper.Path();
-      this.path.strokeColor = new paper.Color(event.color || this.getColor());
-      this.path.strokeWidth = event.size || this.getSize();
+      this.path.strokeColor = new paper.Color(event.color || activeColor);
+      this.path.strokeWidth = event.size || activeSize;
     }
     if (event.point) this.path.add(event.point);
     if (this.channel && !event.isForeign) {
@@ -130,24 +137,29 @@ class DrawingTool {
     }
   }
 
-  getColor(): string {
-    return this.color || globalColor;
-  }
-  getSize(): number {
-    return this.size || globalSize;
-  }
-
   activate() {
     this.tool.activate();
   }
 };
 
+class DrawingMember extends DrawingTool {
+  activate() {
+    log("warning: activating a drawing member's drawing tool doesn't do anything");
+  }
+}
+
 let ui: UI | null = null;
 let socketServer: SocketServer | null = null;
+let drawingMembers: DrawingMember[] = [];
+
 let drawingTools: DrawingTool[] = [];
-var activeDrawingToolIndex = 0;
-let globalColor: string = '#000000';
-let globalSize: number = 2;
+let activeDrawingToolIndex = 0;
+
+let drawingColors: string[] = [];
+let activeColor: string = '#000000';
+
+let drawingSizes: number[] = [];
+let activeSize: number = 2;
 
 function setActiveDrawingToolIndex(index: number) {
   setActiveDrawingTool(drawingTools[index]);
@@ -161,31 +173,55 @@ function getActiveDrawingTool() {
   return drawingTools[activeDrawingToolIndex];
 }
 
+function setActiveColor(color: string) {
+  activeColor = color;
+}
+function setActiveSize(size: number) {
+  activeSize = size;
+}
+
 window.onload = () => {
   paper.setup('myCanvas');
 
   drawingTools = [
-    new DrawingTool('#000000', null), 
-    new DrawingTool('#ff0000', null), 
-    new DrawingTool('#ff8800', null), 
-    new DrawingTool('#eeee00', null), 
-    new DrawingTool('#00dd00', null), 
-    new DrawingTool('#0088ff', null),
-    new DrawingTool('#ee00ee', null),
-    new DrawingTool('#aa00aa', null),
+    new DrawingTool('Pen'),
   ];
 
-  let toolPickerContainer = document.getElementById('toolPickerContainer');
+  drawingColors = [
+    '#000000',
+    '#ff0000',
+    '#ff8800',
+    '#eeee00',
+    '#00dd00',
+    '#0088ff',
+    '#ff00ff',
+    '#bb00bb',
+  ];
+
+  let toolPickerContainer = document.getElementById('tool-picker-container');
   if (toolPickerContainer) {
-    for (var i in drawingTools) {
+    for (i in drawingTools) {
       let tool = drawingTools[i];
       let button = document.createElement("button");
-      if (tool.color) button.style.backgroundColor = tool.color;
-      button.classList.add('colorOption');
+      button.innerText = tool.name;
+      button.classList.add('toolOption');
       button.onclick = function () {
         setActiveDrawingTool(tool);
       }
       toolPickerContainer.appendChild(button);
+    }
+  }
+  let colorPickerContainer = document.getElementById('color-picker-container');
+  if (colorPickerContainer) {
+    for (var i in drawingColors) {
+      const color = drawingColors[i];
+      const button = document.createElement("button");
+      button.style.backgroundColor = color;;
+      button.classList.add('colorOption');
+      button.onclick = function () {
+        setActiveColor(color)
+      }
+      colorPickerContainer.appendChild(button);
     }
   }
 
@@ -196,13 +232,26 @@ window.onload = () => {
 
   socketServer.ui = ui;
 
-  let form = <HTMLFormElement> document.querySelector('#login-form');
-  form.addEventListener('submit', (event) => {
+  const form = document.querySelector('#login-form') as HTMLFormElement;
+  if (form) form.addEventListener('submit', (event) => {
     event.preventDefault();
-    let data = new FormData(form!);
-    let uname = <string> data.get('username');
-    let room = <string> data.get('room');
-    socketServer!.register(uname);
-    socketServer!.join(room);
+    let data = new FormData(form);
+    let uname = data.get('username') as string;
+    let room = data.get('room') as string;
+    if (!uname || !room) { 
+      alert('You need to join a room with a username!'); 
+      return; 
+    }
+
+    socketServer?.register(uname);
+    socketServer?.join(room);
+
+    const loginOverlay = document.getElementById('login-overlay');
+    if (loginOverlay) {
+      loginOverlay.style.opacity = '0';
+      setTimeout(function () {
+        loginOverlay.style.display = 'none';
+      }, 500);
+    }
   });
 };

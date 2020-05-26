@@ -1,24 +1,28 @@
 <%- include('layouts/header') %>
 <main>
-  <div>
+  <div id="main-container">
+    <div>
+      <div class="room-info">
+        <div class="members-container">
+          Members:
+          <div class="members"></div>
+        </div>
+      </div>
+
+      <div id="tool-picker-container"></div>
+      <div id="color-picker-container"></div>
+      <div id="size-picker-container"></div>
+    </div>
+    <canvas id="myCanvas" resize></canvas>
+  </div>
+
+  <div id="login-overlay">
     <form id="login-form">
-      <label for="username">Username:</label>
-      <input name="username" type="text">
-      <label for="room">Room:</label>
-      <input name="room" type="text">
+      <input name="username" type="text" placeholder="Username">
+      <input name="room" type="text" placeholder="Room">
       <input name="login" type="submit" value="Login">
     </form>
-
-    <div class="room-info">
-      <div class="members-container">
-        Members:
-        <div class="members"></div>
-      </div>
-    </div>
-
-    <div id="toolPickerContainer"></div>
   </div>
-  <canvas id="myCanvas" resize></canvas>
 
   <script type="text/javascript" src="js/lib/paper-full.min.js"></script>
   <script type="text/javascript" src="socket.io/socket.io.js"></script>
