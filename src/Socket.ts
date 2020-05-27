@@ -161,9 +161,8 @@ class SocketServer {
       this.broadcastRoomInfo(user.room);
 
       //auto cleanup if necessary
-      const _t = this;
       const userRoom = user.room;
-      setTimeout(function () {_t.deleteRoomIfEmpty(userRoom)}, 60000);
+      setTimeout(() => this.deleteRoomIfEmpty(userRoom), 60000);
     }
 
     // join
