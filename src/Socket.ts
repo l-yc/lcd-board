@@ -50,6 +50,8 @@ class Socket {
 
   private onDisconnect(): void {
     console.log('%s disconnected', this.socket.id);
+    this.onLeave();
+    this.server.unregisterUser(this.socket.id);
   }
 
   private onRegister(username: string): void {
@@ -137,6 +139,11 @@ class SocketServer {
     }
     let user = this.users.get(socketId) as User;
     user.username = username;
+  }
+
+  public unregisterUser(socketId: string): void {
+    if (!this.users.has(socketId)) return; // this user is not registered!
+    this.users.delete(socketId); // ignore whether something is deleted
   }
 
   public setUserRoom(socketId: string, room: string | null): void {
