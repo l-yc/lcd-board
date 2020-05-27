@@ -7,6 +7,7 @@ interface User {
 
 interface Room {
   users: string[];
+  whiteboard: DrawEvent[];
 };
 
 interface RoomInfo {
@@ -14,8 +15,15 @@ interface RoomInfo {
 };
 
 interface DrawEvent {
-  event: any;
-  originUserId: string;
+  group: string,
+  originUserId: string,
+  type: string,
+  point: {
+    x: number,
+    y: number,
+  },
+  color: string,
+  size: number
 };
 
 // wrapper around SocketIO.Socket
@@ -60,6 +68,8 @@ class Socket {
     this.socket.join(room);
     this.room = room;
     this.server.setUserRoom(this.socket.id, room);
+
+    this.socket.emit('room whiteboard', this.server.getRoomWhiteboard(this.room));
   }
 
   private onLeave(): void {
@@ -77,7 +87,8 @@ class Socket {
       return;
     } 
     this.socket.broadcast
-      .to(this.room).emit('draw event', {'event' : event, 'originUserId': this.socket.id});
+      .to(this.room).emit('draw event', event);
+    this.server.recordDrawEvent(this.socket.id, event);
   }
 };
 
@@ -144,7 +155,7 @@ class SocketServer {
     if (room) {
       let r: Room;
       if (!this.rooms.has(room)) {
-        r = { users: [] };
+        r = { users: [], whiteboard: [] };
         this.rooms.set(room, r);
       } else {
          r = this.rooms.get(room) as Room;
@@ -156,6 +167,34 @@ class SocketServer {
 
     // update user
     user.room = room;
+  }
+
+  public recordDrawEvent(socketId: string, event: DrawEvent): void {
+    let user: User | undefined = this.users.get(socketId);
+    if (!user) {
+      console.log('unknown DrawEvent source: %s', socketId);
+      return;
+    }
+    if (!user.room) {
+      console.log('user (id %s) is not in a room!', socketId);
+      return;
+    }
+    let room: Room | undefined = this.rooms.get(user.room);
+    if (!room) {
+      console.log('bad roomId', user.room);
+      return;
+    }
+
+    console.log('recording draw event %o', event);
+    room.whiteboard.push(event);
+  }
+
+  public getRoomWhiteboard(roomId: string): DrawEvent[] { // not ideal, cannot handle erasing
+    let room: Room | undefined = this.rooms.get(roomId);
+    if (!room) {
+      throw 'Bad room id ' + roomId;
+    }
+    return room.whiteboard;
   }
 };
 

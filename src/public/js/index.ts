@@ -49,11 +49,27 @@ class SocketServer {
       log('connected!');
     });
 
+    this.socket.on('room whiteboard', (whiteboard: DrawEvent[]) => { // after joining
+      log('received room whiteboard: %o', whiteboard);
+      let dt: { [group: string]: DrawingTool } = {};
+      let cnt = 0;
+      whiteboard.forEach((drawEvent: DrawEvent) => {
+        let cur: DrawingTool;
+        if (!dt[drawEvent.group]) {
+          cur = new DrawingTool(`roomInitialiserWorker${cnt}`);
+          dt[drawEvent.group] = cur;
+        } else {
+          cur = dt[drawEvent.group];
+        }
+        cur.handle(drawEvent);
+      });
+    });
+
     this.socket.on('draw event', (drawEvent: DrawEvent) => {
       log('received draw event');
       for (let member of drawingMembers) {
         if (member.id == drawEvent.originUserId) {
-          member.drawingTool.handle(drawEvent.event);
+          member.drawingTool.handle(drawEvent);
           break;
         } else {
           log('unknown member: ' + drawEvent.originUserId + ' is drawing, ignoring user')
@@ -84,14 +100,17 @@ class SocketServer {
     this.socket.emit('join', room);
   }
 
-  send(event: any) {
+  send(event: any, pathId: number) {
     if (!this.room) return; // not initialised, FIXME throw an error
 
+    let group: string = `${this.socket.id}_{pathId}`; // globally unique id
     // We manually deconstruct the point object because paperjs
     // serializes it into Array instead of JSON for newer versions
     // See: https://github.com/paperjs/paper.js/issues/1318
     log('sending draw event');
     this.socket.emit('draw event', {
+      group: group,
+      originUserId: this.socket.id,
       type: event.type,
       point: {
         x: event.point.x,
@@ -138,8 +157,8 @@ class DrawingTool {
       this.path.strokeWidth = event.size || this.size;
     }
     if (event.point) this.path.add(event.point);
-    if (this.channel && !event.isForeign) {
-      this.channel.send(event);
+    if (this.channel) {
+      this.channel.send(event, this.path.id);
     }
   }
 
