@@ -14,17 +14,20 @@ interface RoomInfo {
   users: { [uid: string]: User };
 };
 
+type DrawEventAction = "begin" | "move" | "end"
 interface DrawEvent {
-  group: string,
-  originUserId: string,
-  type: string,
+  group?: string,
+  originUserId?: string,
+  action: DrawEventAction,
   point: {
     x: number,
     y: number,
   },
+  toolConfig?: any,
   color: string,
   size: number
 };
+
 
 // wrapper around SocketIO.Socket
 class Socket {
@@ -89,7 +92,7 @@ class Socket {
       return;
     } 
     this.socket.broadcast
-      .to(this.room).emit('draw event', event);
+    .to(this.room).emit('draw event', event);
     this.server.recordDrawEvent(this.socket.id, event);
   }
 };
@@ -143,7 +146,7 @@ class SocketServer {
 
   public unregisterUser(socketId: string): void {
     if (!this.users.has(socketId)) return; // this user is not registered!
-    this.users.delete(socketId); // ignore whether something is deleted
+    this.users.delete(socketId);
   }
 
   public setUserRoom(socketId: string, room: string | null): void {
@@ -156,6 +159,11 @@ class SocketServer {
       r.users.splice(idx, 1);
 
       this.broadcastRoomInfo(user.room);
+
+      //auto cleanup if necessary
+      const _t = this;
+      const userRoom = user.room;
+      setTimeout(function () {_t.deleteRoomIfEmpty(userRoom)}, 60000);
     }
 
     // join
@@ -165,15 +173,23 @@ class SocketServer {
         r = { users: [], whiteboard: [] };
         this.rooms.set(room, r);
       } else {
-         r = this.rooms.get(room) as Room;
+        r = this.rooms.get(room) as Room;
       }
       r.users.push(socketId);
 
       this.broadcastRoomInfo(room);
+
     }
 
     // update user
     user.room = room;
+  }
+
+  public deleteRoomIfEmpty(room: string | null): void {
+    if (room && this.rooms.get(room)?.users.length == 0) {
+      console.log("cleanup: deleting room %s", room);
+      this.rooms.delete(room);
+    }
   }
 
   public recordDrawEvent(socketId: string, event: DrawEvent): void {
@@ -206,4 +222,4 @@ class SocketServer {
 };
 
 export default SocketServer;
-export { SocketServer, User, Room, RoomInfo, DrawEvent };
+export { SocketServer, User, Room, RoomInfo, DrawEvent, DrawEventAction };

@@ -1,7 +1,7 @@
 'use strict';
 import io from 'socket.io-client';
 import paper from 'paper';
-import { User, DrawEvent, RoomInfo } from '../../Socket';
+import { User, DrawEvent, DrawEventAction, RoomInfo } from '../../Socket';
 
 console.clear();
 
@@ -19,7 +19,7 @@ class UI {
     if (!members) return;
 
     drawingMembers = [];
-    members.innerHTML = ""; 
+    members.innerHTML = "";
 
     Object.keys(info.users).forEach((userId: string) => {
       drawingMembers.push(new DrawingMember(userId, info.users[userId]));
@@ -53,7 +53,9 @@ class SocketServer {
       log('received room whiteboard: %o', whiteboard);
       let dt: { [group: string]: DrawingTool } = {};
       let cnt = 0;
-      whiteboard.forEach((drawEvent: DrawEvent) => {
+      for (let drawEvent of whiteboard) {
+        if (!drawEvent.group) continue;
+
         let cur: DrawingTool;
         if (!dt[drawEvent.group]) {
           cur = new DrawingTool(`roomInitialiserWorker${cnt}`);
@@ -62,14 +64,14 @@ class SocketServer {
           cur = dt[drawEvent.group];
         }
         cur.handle(drawEvent);
-      });
+      };
     });
 
     this.socket.on('draw event', (drawEvent: DrawEvent) => {
       log('received draw event');
       for (let member of drawingMembers) {
         if (member.id == drawEvent.originUserId) {
-          member.drawingTool.handle(drawEvent);
+          member.handle(drawEvent);
           break;
         } else {
           log('unknown member: ' + drawEvent.originUserId + ' is drawing, ignoring user')
@@ -100,27 +102,21 @@ class SocketServer {
     this.socket.emit('join', room);
   }
 
-  send(event: any, pathId: number) {
+  sendDrawEvent(event: DrawEvent, pathId: number) {
     if (!this.room) return; // not initialised, FIXME throw an error
 
-    let group: string = `${this.socket.id}_{pathId}`; // globally unique id
-    // We manually deconstruct the point object because paperjs
-    // serializes it into Array instead of JSON for newer versions
-    // See: https://github.com/paperjs/paper.js/issues/1318
+    let group: string = `${this.getUserId()}_${pathId}`; // globally unique id
+
+    event.group = group;
+    event.originUserId = this.getUserId();
+
     log('sending draw event');
-    this.socket.emit('draw event', {
-      group: group,
-      originUserId: this.socket.id,
-      type: event.type,
-      point: {
-        x: event.point.x,
-        y: event.point.y
-      },
-      color: activeColor,
-      size: getActiveDrawingTool().size
-    });
+    this.socket.emit('draw event', event);
   }
 
+  getUserId() {
+    return this.socket.id;
+  }
 };
 
 class DrawingTool {
@@ -134,31 +130,56 @@ class DrawingTool {
   public size: number = 2;
 
 
-  constructor(name: string) {
+  public constructor(name: string) {
     // Create a simple drawing tool:
     let tool = new paper.Tool();
 
     this.tool = tool;
 
-    // Define a mousedown and mousedrag handler
-    tool.onMouseDown = this.handle.bind(this); 
-    tool.onMouseDrag = this.handle.bind(this); 
+    // Define a mousedown anousedrag handler
+    tool.onMouseDown = this.handleMouseEvent.bind(this);
+    tool.onMouseDrag = this.handleMouseEvent.bind(this);
+    tool.onMouseUp   = this.handleMouseEvent.bind(this);
 
     this.name = name;
     this.path = null;
     this.channel = null;
   }
 
-  handle(event: any) {
-    log('handling', event);
-    if (event.type == 'mousedown' || this.path === null) {
-      this.path = new paper.Path();
-      this.path.strokeColor = new paper.Color(event.color || activeColor);
-      this.path.strokeWidth = event.size || this.size;
+  private handleMouseEvent(event: any) {
+    log('received', event.type)
+    let action: DrawEventAction;
+    switch (event.type) {
+      case "mousedown": action = "begin"; break;
+      case "mousedrag": action = "move"; break;
+      case "mouseup"  : action = "end"; break;
+      default: return;
     }
-    if (event.point) this.path.add(event.point);
-    if (this.channel) {
-      this.channel.send(event, this.path.id);
+    this.handle({
+        action: action,
+        point: {
+            x: event.point.x,
+            y: event.point.y,
+        },
+        color: activeColor,
+        size: this.size
+    });
+  }
+
+  public handle(event: DrawEvent) {
+    log('handling', event);
+
+    if (event.action == "begin" || this.path == null) {
+      this.path = new paper.Path();
+    }
+
+    this.path.strokeColor = new paper.Color(event.color);
+    this.path.strokeWidth = event.size;
+
+    if (event.point) this.path.add(new paper.Point(event.point));
+
+    if (this.channel && !event.originUserId) {
+      this.channel.sendDrawEvent(event, this.path.id);
     }
   }
 
@@ -170,12 +191,16 @@ class DrawingTool {
 class DrawingMember {
   readonly id: string;
   private user: User;
-  public drawingTool: DrawingTool;
+  private drawingTool: DrawingTool;
 
   constructor(id: string, user: User) {
     this.id = id;
     this.user = user;
     this.drawingTool = new DrawingTool(id);
+  }
+
+  handle(event: DrawEvent) {
+    this.drawingTool.handle(event)
   }
 }
 
@@ -265,9 +290,9 @@ window.onload = () => {
     let data = new FormData(form);
     let uname = data.get('username') as string;
     let room = data.get('room') as string;
-    if (!uname || !room) { 
-      alert('You need to join a room with a username!'); 
-      return; 
+    if (!uname || !room) {
+      alert('You need to join a room with a username!');
+      return;
     }
 
     socketServer?.register(uname);
