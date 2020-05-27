@@ -62,7 +62,7 @@ gulp.task('watch views', function() {
 });
 
 gulp.task('watch main', function() {
-  return gulp.watch(['./src/**/*.ts', '!./src/public/js/**/*.ts'], gulp.series('scripts'));
+  return gulp.watch(['./src/**/*.ts', '!./src/public/js/**/*.ts'], gulp.series('main'));
 });
 
 gulp.task('watch', gulp.parallel(
