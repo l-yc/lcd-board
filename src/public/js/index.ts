@@ -131,7 +131,7 @@ class DrawingTool {
   readonly name: string;
   public size: number = 2;
 
-  public constructor(name: string, id: string) {
+  public constructor(name: string, id?: string) {
     // Create a simple drawing tool:
     let tool = new paper.Tool();
 
@@ -143,7 +143,7 @@ class DrawingTool {
     tool.onMouseUp   = this.handleMouseEvent.bind(this);
 
     this.name = name;
-    this.toolId = id;
+    this.toolId = id || (((1+Math.random())*0x10000)|0).toString(16).substring(1); //uses id or generates 8 character hex as id
     this.path = null;
     this.channel = null;
   }
