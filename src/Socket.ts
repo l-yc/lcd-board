@@ -23,7 +23,7 @@ interface DrawEvent {
     x: number,
     y: number,
   },
-  toolConfig?: any,
+  toolId?: string,
   color: string,
   size: number
 };

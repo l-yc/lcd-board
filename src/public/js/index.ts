@@ -12,35 +12,97 @@ function log(...args: any) {
 
 class UI {
 
-  constructor() {}
+  readonly drawingCanvas: DrawingCanvas | null = null;
+  constructor(canvas?: DrawingCanvas | null) {
+    if (canvas) this.drawingCanvas = canvas;
+  }
 
   updateRoomInfo(info: RoomInfo) {
     let members = document.querySelector('.room-info .members-container .members') as HTMLElement;
     if (!members) return;
 
-    drawingMembers = [];
+    const canvas = this.drawingCanvas;
+    let drawingMembers: DrawingMember[] = [];
+
     members.innerHTML = "";
 
-    Object.keys(info.users).forEach((userId: string) => {
-      drawingMembers.push(new DrawingMember(userId, info.users[userId]));
+    for (let userId in info.users) {
+      if (!info.users.hasOwnProperty(userId)) return;
+
+      if (canvas) drawingMembers.push(new DrawingMember(userId, info.users[userId]));
 
       let u = document.createElement('span');
       u.innerText = info.users[userId].username as string;
       members.appendChild(u);
-    })
+    };
+
+    if (canvas) canvas.setDrawingMembers(drawingMembers);
   }
 
+  configurePickers() {
+    if (!this.drawingCanvas) return;
+
+    let toolPickerContainer = document.getElementById('tool-picker-container');
+    if (toolPickerContainer) {
+      for (let tool of this.drawingCanvas.getTools()) {
+        tool.interceptPressureEventsOnCanvas(this.drawingCanvas.htmlCanvas);
+        let button = document.createElement("button");
+        button.innerText = tool.name;
+        button.classList.add('toolOption');
+        button.onclick = () => {
+          this.drawingCanvas?.setActiveTool(tool);
+        }
+        toolPickerContainer.appendChild(button);
+      }
+    }
+    let colorPickerContainer = document.getElementById('color-picker-container');
+    if (colorPickerContainer) {
+      for (let color of this.drawingCanvas.getColors()) {
+        const button = document.createElement("button");
+        button.style.backgroundColor = color;;
+        button.classList.add('colorOption');
+        button.onclick = () => {
+          this.drawingCanvas?.setActiveColor(color)
+        }
+        colorPickerContainer.appendChild(button);
+      }
+    }
+  }
+
+  configureLoginForm() {
+    const form = document.querySelector('#login-form') as HTMLFormElement;
+    if (form) form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      let data = new FormData(form);
+      let uname = data.get('username') as string;
+      let room = data.get('room') as string;
+      if (!uname || !room) {
+        alert('You need to join a room with a username!');
+        return;
+      }
+
+      this.drawingCanvas?.getSocketServer()?.register(uname);
+      this.drawingCanvas?.getSocketServer()?.join(room);
+
+      const loginOverlay = document.getElementById('login-overlay');
+      if (loginOverlay) {
+        loginOverlay.style.opacity = '0';
+        setTimeout(function () {
+          loginOverlay.style.display = 'none';
+        }, 500);
+      }
+    });
+  }
 };
 
 class SocketServer {
   private socket: SocketIOClient.Socket;
-  public drawingTools: DrawingTool[] = [];
   private username: string | null;
   private room: string | null;
 
-  public ui: UI | null;
+  public ui: UI | null = null;
 
-  constructor() {
+  constructor(ui?: UI) {
     this.socket = io({
       autoConnect: true
     });
@@ -69,12 +131,10 @@ class SocketServer {
 
     this.socket.on('draw event', (drawEvent: DrawEvent) => {
       log('received draw event');
-      for (let member of drawingMembers) {
+      for (let member of this.ui?.drawingCanvas?.getDrawingMembers() || []) {
         if (member.id == drawEvent.originUserId) {
           member.handle(drawEvent);
           break;
-        } else {
-          log('unknown member: ' + drawEvent.originUserId + ' is drawing, ignoring user')
         }
       }
     });
@@ -88,8 +148,16 @@ class SocketServer {
     this.username = null;
     this.room = null;
 
-    this.drawingTools = [];
-    this.ui = null;
+    if (ui) {
+      this.ui = ui;
+      this.configureDrawingCanvas();
+    }
+  }
+
+  configureDrawingCanvas() {
+    if (this.ui?.drawingCanvas) {
+        this.ui.drawingCanvas.setSocketServer(this);
+    }
   }
 
   register(username: string | null) {
@@ -123,8 +191,9 @@ class DrawingTool {
   private tool: paper.Tool;
   private path: paper.Path | null;
   private pathsDrawnCount = 0;
-  readonly toolId: string;
+  readonly id: string;
 
+  public canvas: DrawingCanvas | null = null;
   public channel: SocketServer | null;
 
   //Drawing tool properties
@@ -143,9 +212,15 @@ class DrawingTool {
     tool.onMouseUp   = this.handleMouseEvent.bind(this);
 
     this.name = name;
-    this.toolId = id || (((1+Math.random())*0x10000)|0).toString(16).substring(1); //uses id or generates 8 character hex as id
+    this.id = id || (((1+Math.random())*0x10000)|0).toString(16).substring(1); //uses id or generates 8 character hex as id
     this.path = null;
     this.channel = null;
+  }
+
+  public clone(id?: string): DrawingTool {
+    let newClone = new DrawingTool(this.name, id || this.id);
+    newClone.size = this.size;
+    return newClone;
   }
 
   private handleMouseEvent(event: any) {
@@ -163,7 +238,8 @@ class DrawingTool {
         x: event.point.x,
         y: event.point.y,
       },
-      color: activeColor,
+      toolId: this.id,
+      color: this.canvas?.getActiveColor() || '#000000',
       size: this.size + Math.min(this.size, 10) * (this.sizeAdjustmentFactor - 1)
     });
   }
@@ -204,6 +280,7 @@ class DrawingTool {
       this.path = null;
       this.previousDrawEvent = null;
       this.sizeAdjustmentFactor = 1;
+
     } else {
       // handle draw action
       // process and handle all properties
@@ -237,9 +314,8 @@ class DrawingTool {
 
     // broadcast draw event to others if required
     if (this.channel && !event.originUserId) {
-      this.channel.sendDrawEvent(event, this.toolId + "_" + this.pathsDrawnCount);
+      this.channel.sendDrawEvent(event, this.id + "_" + this.pathsDrawnCount);
     }
-
   }
 
   public activate() {
@@ -251,6 +327,7 @@ class DrawingMember {
   readonly id: string;
   private user: User;
   private drawingTool: DrawingTool;
+  private drawingTools: DrawingTool[] = [];
 
   constructor(id: string, user: User) {
     this.id = id;
@@ -258,37 +335,111 @@ class DrawingMember {
     this.drawingTool = new DrawingTool(user.username || id, id);
   }
 
+  configureUsingDrawingTools(tools: DrawingTool[]) {
+    this.drawingTools = [];
+    for (let tool of tools) {
+      this.drawingTools.push(tool.clone(this.id + "_" + tool.id));
+    }
+  }
+
+  getDrawingTool(toolId?: string | null) {
+    if (toolId)
+      for (let tool of this.drawingTools)
+        if (tool.id == (this.id + "_" + toolId))
+          return tool;
+    return this.drawingTool;
+  }
+
   handle(event: DrawEvent) {
     if (event.originUserId == this.id)
-      this.drawingTool.handle(event)
+      this.getDrawingTool(event.toolId).handle(event)
   }
 }
 
-let ui: UI | null = null;
-let socketServer: SocketServer | null = null;
-let drawingMembers: DrawingMember[] = [];
+class DrawingCanvas {
+  private drawingMembers: DrawingMember[] = [];
+  private drawingTools: DrawingTool[] = [];
+  private activeDrawingToolIndex = 0;
 
-let drawingTools: DrawingTool[] = [];
-let activeDrawingToolIndex = 0;
+  private drawingColors: string[] = [];
+  private activeColor: string = '#000000';
 
-let drawingColors: string[] = [];
-let activeColor: string = '#000000';
+  readonly htmlCanvas: HTMLElement
+  private socketServer: SocketServer | null = null;
+
+  public constructor(canvas: HTMLElement, tools?: DrawingTool[], colors?: string[]) {
+    this.htmlCanvas = canvas;
+
+    if (tools) this.addTools(tools);
+    if (colors) this.addColors(colors);
+
+    if (this.drawingTools) this.drawingTools[0].activate()
+  }
 
 
-function setActiveDrawingToolIndex(index: number) {
-  setActiveDrawingTool(drawingTools[index]);
-}
-function setActiveDrawingTool(tool: DrawingTool) {
-  tool.activate();
-  let idx = drawingTools.indexOf(tool);
-  if (idx != -1) activeDrawingToolIndex = idx;
-}
-function getActiveDrawingTool() {
-  return drawingTools[activeDrawingToolIndex];
-}
+  public addTools(tools: DrawingTool[]) {
+    for (let tool of tools) {
+      tool.canvas = this;
+      tool.channel = this.socketServer;
+      this.drawingTools.push(tool);
+    }
+  }
+  public addColors(colors: string[]) {
+    for (let color of colors)
+      if (/^#[0-9A-F]{6}$/i.test(color))
+        this.drawingColors.push(color);
+  }
 
-function setActiveColor(color: string) {
-  activeColor = color;
+
+  public getTools(): DrawingTool[] {
+    return this.drawingTools;
+  }
+  public getColors(): string[] {
+    return this.drawingColors;
+  }
+
+
+  public getDrawingMembers(): DrawingMember[] {
+    return this.drawingMembers;
+  }
+  public setDrawingMembers(members: DrawingMember[]) {
+    this.drawingMembers = members;
+    for (let member of members) member.configureUsingDrawingTools(this.drawingTools);
+  }
+
+
+  public setActiveToolIndex(index: number) {
+    this.setActiveTool(this.drawingTools[index]);
+  }
+  public setActiveTool(tool: DrawingTool) {
+    tool.activate();
+    let idx = this.drawingTools.indexOf(tool);
+    if (idx != -1) this.activeDrawingToolIndex = idx;
+  }
+  public getActiveTool() {
+    return this.drawingTools[this.activeDrawingToolIndex];
+  }
+
+
+  public setActiveColor(color: string) {
+    if (/^#[0-9A-F]{6}$/i.test(color))
+      this.activeColor = color;
+  }
+  public getActiveColor(): string {
+    return this.activeColor;
+  }
+
+  public setSocketServer(sock: SocketServer) {
+      this.socketServer = sock;
+      for (let tool of this.drawingTools) {
+          tool.channel = this.socketServer;
+          console.log("set chan for " + tool.name)
+      }
+  }
+  public getSocketServer(): SocketServer | null {
+      return this.socketServer;
+  }
+
 }
 
 
@@ -299,13 +450,11 @@ window.onload = () => {
     return;
   }
 
-  paper.setup('myCanvas');
-
-  drawingTools = [
+  let tools = [
     new DrawingTool('Pen', 'PEN'),
   ];
 
-  drawingColors = [
+  let colors = [
     '#000000',
     '#ff0000',
     '#ff8800',
@@ -316,60 +465,15 @@ window.onload = () => {
     '#bb00bb',
   ];
 
-  let toolPickerContainer = document.getElementById('tool-picker-container');
-  if (toolPickerContainer) {
-    for (let tool of drawingTools) {
-      tool.interceptPressureEventsOnCanvas(canvas);
-      let button = document.createElement("button");
-      button.innerText = tool.name;
-      button.classList.add('toolOption');
-      button.onclick = function () {
-        setActiveDrawingTool(tool);
-      }
-      toolPickerContainer.appendChild(button);
-    }
-  }
-  let colorPickerContainer = document.getElementById('color-picker-container');
-  if (colorPickerContainer) {
-    for (let color of drawingColors) {
-      const button = document.createElement("button");
-      button.style.backgroundColor = color;;
-      button.classList.add('colorOption');
-      button.onclick = function () {
-        setActiveColor(color)
-      }
-      colorPickerContainer.appendChild(button);
-    }
-  }
+  paper.setup('myCanvas');
+  console.log("aaa");
+  let drawingCanvas = new DrawingCanvas(canvas, tools, colors);
+  console.log("bbb");
+  let ui            = new UI(drawingCanvas);
+  console.log("ccc");
+  let socketServer  = new SocketServer(ui);
+  console.log("ddd");
 
-
-  ui = new UI();
-  socketServer = new SocketServer();
-  if (socketServer?.drawingTools) socketServer.drawingTools = drawingTools;
-  for (var tool of drawingTools) tool.channel = socketServer;
-
-  socketServer.ui = ui;
-
-  const form = document.querySelector('#login-form') as HTMLFormElement;
-  if (form) form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    let data = new FormData(form);
-    let uname = data.get('username') as string;
-    let room = data.get('room') as string;
-    if (!uname || !room) {
-      alert('You need to join a room with a username!');
-      return;
-    }
-
-    socketServer?.register(uname);
-    socketServer?.join(room);
-
-    const loginOverlay = document.getElementById('login-overlay');
-    if (loginOverlay) {
-      loginOverlay.style.opacity = '0';
-      setTimeout(function () {
-        loginOverlay.style.display = 'none';
-      }, 500);
-    }
-  });
+  ui.configurePickers();
+  ui.configureLoginForm();
 };
