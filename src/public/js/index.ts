@@ -1,6 +1,7 @@
 'use strict';
 import io from 'socket.io-client';
 import paper from 'paper';
+import { User, DrawEvent, RoomInfo } from '../../Socket';
 
 console.clear();
 
@@ -13,20 +14,20 @@ class UI {
 
   constructor() {}
 
-  updateRoomInfo(info: string[]) {
+  updateRoomInfo(info: RoomInfo) {
     let members = document.querySelector('.room-info .members-container .members') as HTMLElement;
-    if (!members) { return }
+    if (!members) return;
 
     drawingMembers = [];
     members.innerHTML = ""; 
 
-    for (let userId of info) {
-      drawingMembers.push(new DrawingMember(userId));
+    Object.keys(info.users).forEach((userId: string) => {
+      drawingMembers.push(new DrawingMember(userId, info.users[userId]));
 
       let u = document.createElement('span');
-      u.innerText = userId;
+      u.innerText = info.users[userId].username as string;
       members.appendChild(u);
-    };
+    })
   }
 
 };
@@ -48,11 +49,11 @@ class SocketServer {
       log('connected!');
     });
 
-    this.socket.on('draw event', (drawEvent: any) => {
+    this.socket.on('draw event', (drawEvent: DrawEvent) => {
       log('received draw event');
       for (let member of drawingMembers) {
-        if (member.name == drawEvent.originUserId) {
-          member.handle(drawEvent.event);
+        if (member.id == drawEvent.originUserId) {
+          member.drawingTool.handle(drawEvent.event);
           break;
         } else {
           log('unknown member: ' + drawEvent.originUserId + ' is drawing, ignoring user')
@@ -147,9 +148,15 @@ class DrawingTool {
   }
 };
 
-class DrawingMember extends DrawingTool {
-  activate() {
-    log("warning: activating a drawing member's drawing tool doesn't do anything");
+class DrawingMember {
+  readonly id: string;
+  private user: User;
+  public drawingTool: DrawingTool;
+
+  constructor(id: string, user: User) {
+    this.id = id;
+    this.user = user;
+    this.drawingTool = new DrawingTool(id);
   }
 }
 

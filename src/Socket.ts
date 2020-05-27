@@ -3,23 +3,34 @@ import SocketIO from 'socket.io';
 interface User {
   username: string | null;
   room: string | null;
-}
+};
 
 interface Room {
   users: string[];
-}
+};
+
+interface RoomInfo {
+  users: { [uid: string]: User };
+};
+
+interface DrawEvent {
+  event: any;
+  originUserId: string;
+};
 
 // wrapper around SocketIO.Socket
 class Socket {
   private socket: SocketIO.Socket;
   private server: SocketServer;
 
+  private username: string | null;
   private room: string | null; // FIXME some redundancy here with server, maybe should think of another way
 
   constructor(socket: SocketIO.Socket, server: SocketServer) {
     this.socket = socket;
     this.server = server;
 
+    this.username = null;
     this.room = null;
 
     socket.on('disconnect', this.onDisconnect.bind(this));
@@ -35,10 +46,13 @@ class Socket {
 
   private onRegister(username: string): void {
     console.log('%s registered as %s', this.socket.id, username);
+    this.username = username;
     this.server.registerUser(this.socket.id, username);
   }
 
   private onJoin(room: string): void {
+    if (!this.username) return; // cannot join without logging in
+
     if (this.room) {
       this.socket.leave(this.room);
     }
@@ -55,7 +69,7 @@ class Socket {
     }
   }
 
-  private onDrawEvent(event: any): void {
+  private onDrawEvent(event: DrawEvent): void {
     console.log('received event %o', event);
     if (!this.room) {
       // user is not subscribed to any room, don't broadcast
@@ -91,6 +105,21 @@ class SocketServer {
     });
   }
 
+  private broadcastRoomInfo(room: string): void {
+    let r = this.rooms.get(room);
+    if (!r) return; // nothing to broadcast
+
+    let users: { [uid: string]: User } = {};
+    r.users?.forEach((uid: string) => {
+      users[uid] = this.users.get(uid) as User // if it's null something is wrong
+    });
+
+    let roomInfo: RoomInfo = {
+      users: users
+    };
+    this.io.to(room).emit('room info', roomInfo);
+  }
+
   public registerUser(socketId: string, username: string): void {
     if (!this.users.has(socketId)) {
       this.users.set(socketId, { username: null, room: null });
@@ -108,7 +137,7 @@ class SocketServer {
       let idx = r.users.indexOf(socketId);
       r.users.splice(idx, 1);
 
-      this.io.to(user.room).emit('room info', r.users);
+      this.broadcastRoomInfo(user.room);
     }
 
     // join
@@ -122,7 +151,7 @@ class SocketServer {
       }
       r.users.push(socketId);
 
-      this.io.to(room).emit('room info', r.users);
+      this.broadcastRoomInfo(room);
     }
 
     // update user
@@ -131,3 +160,4 @@ class SocketServer {
 };
 
 export default SocketServer;
+export { SocketServer, User, Room, RoomInfo, DrawEvent };
