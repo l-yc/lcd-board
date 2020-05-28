@@ -31,7 +31,8 @@ interface DrawEvent {
   toolId?: string,
   color: string,
   size: number,
-  adjustedSize?: number
+  adjustedSize?: number,
+  persistent: boolean
 };
 
 
@@ -97,9 +98,8 @@ class Socket {
       console.log('invalid event: the user ' + this.socket.id + ' is not subscribed to any room!');
       return;
     } 
-    this.socket.broadcast
-    .to(this.room).emit('draw event', event);
-    this.server.recordDrawEvent(this.socket.id, event);
+    this.socket.broadcast.to(this.room).emit('draw event', event);
+    if (event.persistent) this.server.recordDrawEvent(this.socket.id, event);
   }
 };
 

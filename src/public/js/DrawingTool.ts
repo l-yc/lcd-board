@@ -70,7 +70,8 @@ class DrawingTool {
       },
       toolId: this.id,
       color: this.canvas?.getActiveColor() || '#000000',
-      size: this.size
+      size: this.size,
+      persistent: true
     };
   }
 
@@ -219,6 +220,12 @@ class LaserPointer extends DrawingTool {
     let newClone = new LaserPointer(this.name, id || this.id);
     newClone.size = this.size;
     return newClone;
+  }
+
+  protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
+    let result = super.processMouseEventAsDrawEvent(event);
+    if (result) result.persistent = false;
+    return result;
   }
 
   public handle(event: DrawEvent) {
