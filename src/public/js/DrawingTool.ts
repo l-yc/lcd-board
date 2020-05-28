@@ -65,16 +65,19 @@ class DrawingTool {
       },
       toolId: this.id,
       color: this.canvas?.getActiveColor() || '#000000',
-      size: this.size + (this.pressureSensitive ? (Math.min(this.size, 10) * (this.sizeAdjustmentFactor - 1)) : 0)
+      size: this.size
     };
+  }
+
+  protected sizeAdjustmentFactor: number = 1;
+  protected shouldAutoAdjustSizeToFactor(): boolean {
+    return this.isPressureSensitive();
   }
 
   protected pressureSensitive = false;
   public isPressureSensitive(): boolean {
     return this.pressureSensitive;
   }
-
-  protected sizeAdjustmentFactor: number = 1;
   public interceptPressureEventsOnCanvas(canvas: HTMLElement) {
     if (canvas) {
       let pointerEventPressureHandler = (event: any) => {
@@ -105,6 +108,14 @@ class DrawingTool {
   public handle(event: DrawEvent) {
     log('handling', event);
 
+    if (!event.adjustedSize) {
+      if (this.shouldAutoAdjustSizeToFactor()) {
+        event.adjustedSize = event.size * (1 + (Math.min(event.size, 10) * (this.sizeAdjustmentFactor - 1)));
+      } else {
+        event.adjustedSize = event.size;
+      }
+    }
+
     if (event.action == "end") {
       // we do some cleanup when a draw action ends
       this.path = null;
@@ -115,15 +126,14 @@ class DrawingTool {
       // handle draw action
       // process and handle all properties
       let color = new paper.Color(event.color);
-      let size = event.size;
+      let size = event.adjustedSize;
 
       let firstEventCall = event.action == "begin";
       let strokePropertiesChanged = this.path != null && (this.path.strokeWidth != size || this.path.strokeColor != color);
 
-      if (this.path == null || firstEventCall || strokePropertiesChanged) {
-        this.path = new paper.Path();
-        this.path.strokeCap = 'round';
-      }
+      // create new path for each line segment between two draw events
+      this.path = new paper.Path();
+      this.path.strokeCap = 'round';
 
       // apply settings
       this.path.strokeColor = color;
@@ -154,10 +164,40 @@ class DrawingTool {
 };
 
 class Pen extends DrawingTool {
-  constructor(id?: string) {
+  public constructor(id?: string) {
     super("Pen", id || "PEN");
   }
+  public clone(id?: string): Pen {
+    let newClone = new Pen(id || this.id);
+    newClone.size = this.size;
+    return newClone;
+  }
   protected pressureSensitive = true;
+}
+
+class FountainPen extends DrawingTool {
+  public constructor(id?: string) {
+    super("Fountain", id || "FOUNTAIN_PEN");
+  }
+  public clone(id?: string): FountainPen {
+    let newClone = new FountainPen(id || this.id);
+    newClone.size = this.size;
+    return newClone;
+  }
+  protected shouldAutoAdjustSizeToFactor(): boolean {
+    return true;
+  }
+  protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
+    if (this.previousDrawEvent) {
+      let distance = event.delta.length;
+
+      let oldFactor = this.sizeAdjustmentFactor;
+      let newFactor = 1+Math.max(-0.5, Math.min((20-distance)/20, 0.25));
+
+      this.sizeAdjustmentFactor = Math.max(oldFactor - 0.05, Math.min(newFactor, oldFactor + 0.05)); //Allow maximum change of 0.05
+    }
+    return super.processMouseEventAsDrawEvent(event);
+  }
 }
 
 class WeightedPenTool extends DrawingTool {
@@ -260,4 +300,4 @@ class WeightedPenTool extends DrawingTool {
   }
 };
 
-export { DrawingTool, Pen, WeightedPenTool };
+export { DrawingTool, Pen, FountainPen, WeightedPenTool };

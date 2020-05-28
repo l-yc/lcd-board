@@ -2,7 +2,7 @@
 import paper from 'paper';
 
 import { log } from './utils';
-import { DrawingTool, Pen, WeightedPenTool } from './DrawingTool';
+import { DrawingTool, Pen, FountainPen, WeightedPenTool } from './DrawingTool';
 import { DrawingCanvas } from './DrawingCanvas';
 import { SocketServer } from './SocketServer';
 import { UI } from './UI';
@@ -18,6 +18,7 @@ window.onload = () => {
 
   let tools = [
     new Pen(),
+    new FountainPen(),
     new WeightedPenTool('WPen', 'WPEN')
   ];
 
@@ -33,13 +34,13 @@ window.onload = () => {
   ];
 
   paper.setup('myCanvas');
-  console.log("aaa");
+  console.log("configured paper.js canvas");
   let drawingCanvas = new DrawingCanvas(canvas, tools, colors);
-  console.log("bbb");
+  console.log("configured DrawingCanvas");
   let ui            = new UI(drawingCanvas);
-  console.log("ccc");
+  console.log("configured UI");
   let socketServer  = new SocketServer(ui);
-  console.log("ddd");
+  console.log("configured SocketServer");
 
   ui.configurePickers();
   ui.configureLoginForm();

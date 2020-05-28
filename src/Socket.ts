@@ -26,7 +26,8 @@ interface DrawEvent {
   },
   toolId?: string,
   color: string,
-  size: number
+  size: number,
+  adjustedSize?: number
 };
 
 
