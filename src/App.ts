@@ -3,7 +3,7 @@ import path from 'path';
 
 class App {
   public express: any;
-  
+
   constructor() {
     // Create a new express application instance
     this.express = express();
@@ -22,7 +22,7 @@ class App {
   private mountRoutes(): void {
     const router = express.Router();
     router.get('/', function (req: Request, res: Response) {
-      res.render('index', { title: 'test' });
+      res.render('index', { title: 'lcd-board' });
     });
 
     this.express.use('/', router);
