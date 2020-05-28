@@ -3,6 +3,7 @@ import paper from 'paper';
 import { log } from './utils';
 
 import { DrawEvent, DrawEventAction } from '../../Socket';
+
 import { SocketServer } from './SocketServer';
 import { DrawingCanvas } from './DrawingCanvas';
 
@@ -59,6 +60,10 @@ class DrawingTool {
     return {
       action: action,
       timeStamp: event.timeStamp,
+      delta: {
+        x: event.delta.x,
+        y: event.delta.y
+      },
       point: {
         x: event.point.x,
         y: event.point.y,
@@ -201,14 +206,57 @@ class FountainPen extends DrawingTool {
   }
 }
 
-class WeightedPenTool extends DrawingTool {
+class LaserPointer extends DrawingTool {
+  protected pointer: paper.Path.Circle | null = null;
+  protected color: paper.Color = new paper.Color('red');
+  public size: number = 5;
 
   public constructor(name: string, id?: string) {
     super(name, id);
   }
 
-  public clone(id?: string): WeightedPenTool {
-    let newClone = new WeightedPenTool(this.name, id || this.id);
+  public clone(id?: string): LaserPointer {
+    let newClone = new LaserPointer(this.name, id || this.id);
+    newClone.size = this.size;
+    return newClone;
+  }
+
+  public handle(event: DrawEvent) {
+    log('handling', event);
+    switch (event.action) {
+      case 'begin':
+        this.pointer = new paper.Path.Circle({
+          center: event.point,
+          radius: this.size
+        });
+        this.pointer.fillColor = this.color;
+        break;
+      case 'move':
+        log('wtf move you lil shit ', this.pointer);
+        this.pointer?.translate(new paper.Point(event.delta));
+        break;
+      case 'end':
+        this.pointer?.remove();
+        this.pointer = null;
+        break;
+    }
+
+    // broadcast draw event to others if required
+    if (this.channel && !event.originUserId) {
+      this.channel.sendDrawEvent(event, this.id + "_" + this.pathsDrawnCount);
+    }
+  }
+};
+
+// supposed to be a weighted pen but it's weird, hence the name
+class WeirdPen extends DrawingTool {
+
+  public constructor(name: string, id?: string) {
+    super(name, id);
+  }
+
+  public clone(id?: string): WeirdPen {
+    let newClone = new WeirdPen(this.name, id || this.id);
     newClone.size = this.size;
     return newClone;
   }
@@ -216,6 +264,8 @@ class WeightedPenTool extends DrawingTool {
   protected momentum: { x: number, y: number } = { x: 0, y: 0 };
   public handle(event: DrawEvent) {
     log('handling', event);
+
+    let eventOriginal = JSON.parse(JSON.stringify(event)); // backup a deep copy of the event to be saved
 
     if (this.previousDrawEvent) {
       // transform the event point first, using momentum
@@ -236,13 +286,14 @@ class WeightedPenTool extends DrawingTool {
         y: resultant.y / magnitude
       }
       let transformed = {
-        x: event.point.x * norm.x,
-        y: event.point.y * norm.y
+        x: displacement.x * norm.x,
+        y: displacement.y * norm.y
       }
       log('momentum', event.point, transformed);
 
-      // apply the transformed point
-      event.point = transformed;
+      // apply the transformation
+      event.point.x += transformed.x;
+      event.point.y += transformed.y;
 
       // recalculate momentum
       let dt = event.timeStamp - this.previousDrawEvent.timeStamp;
@@ -291,7 +342,9 @@ class WeightedPenTool extends DrawingTool {
 
       // we add a new point for the current location
       this.path.add(new paper.Point(event.point));
-      this.previousDrawEvent = event;
+
+      // update previousDrawEvent to use the raw current event
+      this.previousDrawEvent = eventOriginal;
     }
 
     // broadcast draw event to others if required
@@ -301,4 +354,4 @@ class WeightedPenTool extends DrawingTool {
   }
 };
 
-export { DrawingTool, Pen, FountainPen, WeightedPenTool };
+export { DrawingTool, Pen, FountainPen, WeirdPen, LaserPointer };
