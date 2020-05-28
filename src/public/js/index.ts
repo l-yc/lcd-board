@@ -188,9 +188,9 @@ class SocketServer {
 };
 
 class DrawingTool {
-  private tool: paper.Tool;
-  private path: paper.Path | null;
-  private pathsDrawnCount = 0;
+  protected tool: paper.Tool;
+  protected path: paper.Path | null;
+  protected pathsDrawnCount = 0;
   readonly id: string;
 
   public canvas: DrawingCanvas | null = null;
@@ -223,7 +223,7 @@ class DrawingTool {
     return newClone;
   }
 
-  private handleMouseEvent(event: any) {
+  protected handleMouseEvent(event: any) {
     log('received', event.type)
     let action: DrawEventAction;
     switch (event.type) {
@@ -234,6 +234,7 @@ class DrawingTool {
     }
     this.handle({
       action: action,
+      timeStamp: event.timeStamp,
       point: {
         x: event.point.x,
         y: event.point.y,
@@ -244,7 +245,7 @@ class DrawingTool {
     });
   }
 
-  private sizeAdjustmentFactor: number = 1;
+  protected sizeAdjustmentFactor: number = 1;
   public interceptPressureEventsOnCanvas(canvas: HTMLElement) {
     if (canvas) {
       let pointerEventPressureHandler = (event: any) => {
@@ -271,7 +272,7 @@ class DrawingTool {
     }
   }
 
-  private previousDrawEvent: DrawEvent | null = null;
+  protected previousDrawEvent: DrawEvent | null = null;
   public handle(event: DrawEvent) {
     log('handling', event);
 
@@ -320,6 +321,107 @@ class DrawingTool {
 
   public activate() {
     this.tool.activate();
+  }
+};
+
+class WeightedPenTool extends DrawingTool {
+
+  public constructor(name: string, id?: string) {
+    super(name, id);
+  }
+
+  public clone(id?: string): WeightedPenTool {
+    let newClone = new WeightedPenTool(this.name, id || this.id);
+    newClone.size = this.size;
+    return newClone;
+  }
+
+  protected momentum: { x: number, y: number } = { x: 0, y: 0 };
+  public handle(event: DrawEvent) {
+    log('handling', event);
+
+    if (this.previousDrawEvent) {
+      // transform the event point first, using momentum
+      // idea: calculate displacement vector, find the sum of both vectors
+      //       and project the current displacement vector in the direction
+      //       of the resultant vector
+      let displacement = {
+        x: event.point.x - this.previousDrawEvent.point.x,
+        y: event.point.y - this.previousDrawEvent.point.y
+      }
+      let resultant = {
+        x: displacement.x + this.momentum.x,
+        y: displacement.y + this.momentum.y
+      }
+      let magnitude = Math.sqrt(resultant.x * resultant.x + resultant.y * resultant.y);
+      let norm = {
+        x: resultant.x / magnitude,
+        y: resultant.y / magnitude
+      }
+      let transformed = {
+        x: event.point.x * norm.x,
+        y: event.point.y * norm.y
+      }
+      log('momentum', event.point, transformed);
+
+      // apply the transformed point
+      event.point = transformed;
+
+      // recalculate momentum
+      let dt = event.timeStamp - this.previousDrawEvent.timeStamp;
+      let velocity = {
+        x: displacement.x / dt,
+        y: displacement.y / dt
+      }
+      const mass = 10.0;
+      this.momentum = {
+        x: velocity.x * mass,
+        y: velocity.y * mass
+      }
+    }
+
+    if (event.action == "end") {
+      // we do some cleanup when a draw action ends
+      this.path = null;
+      this.previousDrawEvent = null;
+      this.sizeAdjustmentFactor = 1;
+      this.momentum = { x: 0, y: 0 };
+    } else {
+      // handle draw action
+      // process and handle all properties
+      let color = new paper.Color(event.color);
+      let size = event.size;
+
+      let firstEventCall = event.action == "begin";
+      let strokePropertiesChanged = this.path != null && (this.path.strokeWidth != size || this.path.strokeColor != color);
+
+      if (this.path == null || firstEventCall || strokePropertiesChanged) {
+        this.path = new paper.Path();
+        this.path.strokeCap = 'round';
+      }
+
+      // apply settings
+      this.path.strokeColor = color;
+      this.path.strokeWidth = size;
+
+      // increment internal paths drawn counter for each stroke
+      if (firstEventCall) this.pathsDrawnCount += 1;
+
+      // if this stroke is just due to a property change rather than a new stroke, we connect it with the previous stroke.
+      if (strokePropertiesChanged && this.previousDrawEvent) {
+        this.path.add(new paper.Point(this.previousDrawEvent.point));
+      }
+
+      // we add a new point for the current location
+      this.path.add(new paper.Point(event.point));
+      this.previousPreviousDrawEvent = this.previousDrawEvent;
+      this.previousDrawEvent = event;
+    }
+
+    // broadcast draw event to others if required
+    if (this.channel && !event.originUserId) {
+      this.channel.sendDrawEvent(event, this.id + "_" + this.pathsDrawnCount);
+    }
   }
 };
 
@@ -452,6 +554,7 @@ window.onload = () => {
 
   let tools = [
     new DrawingTool('Pen', 'PEN'),
+    new WeightedPenTool('WPen', 'WPEN')
   ];
 
   let colors = [

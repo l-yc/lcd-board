@@ -19,6 +19,7 @@ interface DrawEvent {
   group?: string,
   originUserId?: string,
   action: DrawEventAction,
+  timeStamp: number,
   point: {
     x: number,
     y: number,
