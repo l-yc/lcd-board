@@ -129,7 +129,6 @@ class DrawingTool {
       let size = event.adjustedSize;
 
       let firstEventCall = event.action == "begin";
-      let strokePropertiesChanged = this.path != null && (this.path.strokeWidth != size || this.path.strokeColor != color);
 
       // create new path for each line segment between two draw events
       this.path = new paper.Path();
@@ -143,12 +142,14 @@ class DrawingTool {
       if (firstEventCall) this.pathsDrawnCount += 1;
 
       // if this stroke is just due to a property change rather than a new stroke, we connect it with the previous stroke.
-      if (strokePropertiesChanged && this.previousDrawEvent) {
+      if (this.previousDrawEvent) {
         this.path.add(new paper.Point(this.previousDrawEvent.point));
       }
 
       // we add a new point for the current location
       this.path.add(new paper.Point(event.point));
+
+      // update cached prev draw event
       this.previousDrawEvent = event;
     }
 
@@ -194,7 +195,7 @@ class FountainPen extends DrawingTool {
       let oldFactor = this.sizeAdjustmentFactor;
       let newFactor = 1+Math.max(-0.5, Math.min((20-distance)/20, 0.25));
 
-      this.sizeAdjustmentFactor = Math.max(oldFactor - 0.05, Math.min(newFactor, oldFactor + 0.05)); //Allow maximum change of 0.05
+      this.sizeAdjustmentFactor = Math.max(0.5, oldFactor - 0.05, Math.min(newFactor, oldFactor + 0.05, 1.5)); //Allow maximum change of 0.05
     }
     return super.processMouseEventAsDrawEvent(event);
   }
