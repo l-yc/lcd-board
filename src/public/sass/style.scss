@@ -21,25 +21,81 @@ html, body, main {
 }
 
 /* drawing settings */
-button.colorOption {
-  width: 30px;
-  height: 30px;
-  margin: 2px;
-  display: inline-block;
-  appearance: none;
-  border: 1px solid black;
-  border-radius: 15px;
+.pickerContainer {
+  margin: 0px 8px;
 }
-button.toolOption {
+.pickerContainer * {
+  margin: 2px;
   min-width: 30px;
   height: 30px;
-  margin: 2px;
-  padding: 0px 16px;
   display: inline-block;
+  -webkit-appearance: none;
   appearance: none;
   background-color: white;
-  border: 1px solid black;
+  color: black;
+  border: 2px solid #0000;
   border-radius: 15px;
+  box-shadow: 2px 2px 4px 2px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease-in-out;
+  z-index: 100;
+}
+.pickerContainer *:hover {
+  box-shadow: 2px 2px 4px 2px rgba(0, 0, 0, 0.15);
+  z-index: 102;
+}
+.pickerContainer *:active {
+  box-shadow: none !important;
+  z-index: 101;
+}
+.selectedOption {
+  border: 2px solid #ccc !important;
+  box-shadow: 4px 4px 6px 3px rgba(0, 0, 0, 0.15) !important;
+  z-index: 103;
+}
+button.colorOption {
+  opacity: 1.0;
+  width: 30px;
+}
+button.colorPicker {
+  margin: 0px;
+  background-color: white;
+}
+button.toolOption {
+  padding: 0px 16px;
+}
+input.sizeSlider {
+  width: 200px;
+  height: 17px;
+  margin-top   : 17px;
+  margin-bottom: 17px;
+}
+.sizeSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  background: white;
+  cursor: pointer;
+  border: 2px solid black;
+  border-radius: 15px;
+}
+.sizeSlider::-moz-range-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  background: white;
+  cursor: pointer;
+  border: 2px solid black;
+  border-radius: 15px;
+}
+input.textFieldOption {
+}
+#color-picker-container .textFieldOption {
+  width: 75px;
+}
+#size-picker-container .textFieldOption {
+  width: 50px;
 }
 
 /* drawing canvas */

@@ -35,30 +35,77 @@ export class UI {
   configurePickers() {
     if (!this.drawingCanvas) return;
 
-    let toolPickerContainer = document.getElementById('tool-picker-container');
+    const toolPickerContainer = document.getElementById('tool-picker-container');
     if (toolPickerContainer) {
+      toolPickerContainer.innerHTML = '';
+
+      const activeTool = this.drawingCanvas.getActiveTool();
       for (let tool of this.drawingCanvas.getTools()) {
         tool.interceptPressureEventsOnCanvas(this.drawingCanvas.htmlCanvas);
-        let button = document.createElement("button");
+
+        const button = document.createElement("button");
         button.innerText = tool.name;
         button.classList.add('toolOption');
+
+        if (tool == activeTool) 
+          button.classList.add('selectedOption');
+
         button.onclick = () => {
           this.drawingCanvas?.setActiveTool(tool);
+
+          let allOptions = Array.from(toolPickerContainer.getElementsByClassName('toolOption'));
+          for (let option of allOptions) {
+            option.classList.remove('selectedOption');
+          };
+          button.classList.add('selectedOption');
         }
+
         toolPickerContainer.appendChild(button);
       }
     }
-    let colorPickerContainer = document.getElementById('color-picker-container');
+    const colorPickerContainer = document.getElementById('color-picker-container');
     if (colorPickerContainer) {
+      colorPickerContainer.innerHTML = '';
+      let activeColor = this.drawingCanvas.getActiveColor(); 
+
       for (let color of this.drawingCanvas.getColors()) {
         const button = document.createElement("button");
+
         button.style.backgroundColor = color;;
         button.classList.add('colorOption');
+
+        if (color == activeColor)
+          button.classList.add('selectedOption');
+
         button.onclick = () => {
-          this.drawingCanvas?.setActiveColor(color)
+          this.drawingCanvas?.setActiveColor(color);
+
+          let allOptions = Array.from(colorPickerContainer.getElementsByClassName('colorOption'));
+          for (let option of allOptions) {
+            option.classList.remove('selectedOption');
+          };
+          button.classList.add('selectedOption');
         }
         colorPickerContainer.appendChild(button);
       }
+
+      let cachedColor = '#ffffff'
+      const colorPickerButton = document.createElement("button");
+      colorPickerButton.classList.add('colorOption', 'colorPicker');
+      colorPickerButton.onclick = () => {
+        let result = prompt("Enter hex color code (#??????):", cachedColor) || "";
+        this.drawingCanvas?.setActiveColor(result);
+        if (result == this.drawingCanvas?.getActiveColor()) {
+          let allOptions = Array.from(colorPickerContainer.getElementsByClassName('colorOption'));
+          for (let option of allOptions) {
+            option.classList.remove('selectedOption');
+          };
+          colorPickerButton.classList.add('selectedOption');
+          colorPickerButton.style.backgroundColor = result;
+          cachedColor = result;
+        }
+      }
+      colorPickerContainer.appendChild(colorPickerButton);
     }
   }
 
