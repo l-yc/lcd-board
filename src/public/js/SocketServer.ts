@@ -23,7 +23,7 @@ export class SocketServer {
     });
 
     this.socket.on('room whiteboard', (whiteboard: DrawEvent[]) => { // after joining
-      log('received room whiteboard: %o', whiteboard);
+      log('received room whiteboard:', whiteboard);
       let deGroups: { [group: string]: DrawingTool } = {};
       let cnt = 0;
       const currentUserMemberObj = this.ui?.drawingCanvas?.getDrawingMember(this.getUserId());
@@ -46,7 +46,7 @@ export class SocketServer {
     });
 
     this.socket.on('draw event', (drawEvent: DrawEvent) => {
-      log('received draw event');
+      log({verbose: true}, 'received draw event');
       if (drawEvent.originUserId != this.getUserId()) {
         if (drawEvent.originUserId) {
           this.ui?.drawingCanvas?.getDrawingMember(drawEvent.originUserId)?.handle(drawEvent);
@@ -55,6 +55,7 @@ export class SocketServer {
     });
 
     this.socket.on('room info', (info: any) => {
+      log('received room info:', info);
       if (this.ui) {
         this.ui.updateRoomInfo(info);
       }
@@ -76,13 +77,19 @@ export class SocketServer {
   }
 
   register(username: string | null) {
-    this.username = username;
-    this.socket.emit('register', username);
+    if (username) {
+      log("registering as", username);
+      this.username = username;
+      this.socket.emit('register', username);
+    }
   }
 
   join(room: string | null) {
-    this.room = room;
-    this.socket.emit('join', room);
+    if (room) {
+      log("joining room", room);
+      this.room = room;
+      this.socket.emit('join', room);
+    }
   }
 
   sendDrawEvent(event: DrawEvent, pathId: string) {
@@ -93,7 +100,7 @@ export class SocketServer {
     event.group = group;
     event.originUserId = this.getUserId();
 
-    log('sending draw event');
+    log({verbose: true}, 'sending draw event');
     this.socket.emit('draw event', event);
   }
 

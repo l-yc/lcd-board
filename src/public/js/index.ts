@@ -36,13 +36,13 @@ window.onload = () => {
   ];
 
   paper.setup('myCanvas');
-  console.log("configured paper.js canvas");
+  log("configured paper.js canvas");
   let drawingCanvas = new DrawingCanvas(canvas, tools, colors);
-  console.log("configured DrawingCanvas");
+  log("configured DrawingCanvas");
   let ui            = new UI(drawingCanvas);
-  console.log("configured UI");
+  log("configured UI");
   let socketServer  = new SocketServer(ui);
-  console.log("configured SocketServer");
+  log("configured SocketServer");
 
   ui.configurePickers();
   ui.configureLoginForm();

@@ -45,7 +45,7 @@ class DrawingTool {
   }
 
   protected handleMouseEvent(event: any) {
-    log('received', event.type)
+    log({verbose: true}, 'received', event.type)
     let drawEvent = this.processMouseEventAsDrawEvent(event);
     if (drawEvent) this.handle(drawEvent);
   }
@@ -113,7 +113,7 @@ class DrawingTool {
 
   protected previousDrawEvent: DrawEvent | null = null;
   public handle(event: DrawEvent) {
-    log('handling', event);
+    log({verbose: true}, 'handling', event);
 
     if (!event.adjustedSize) {
       if (this.shouldAutoAdjustSizeToFactor()) {
@@ -327,7 +327,7 @@ class WeirdPen extends DrawingTool {
 
   protected momentum: { x: number, y: number } = { x: 0, y: 0 };
   public handle(event: DrawEvent) {
-    log('handling', event);
+    log({verbose: true}, 'handling', event);
 
     let eventOriginal = JSON.parse(JSON.stringify(event)); // backup a deep copy of the event to be saved
 
@@ -353,7 +353,7 @@ class WeirdPen extends DrawingTool {
         x: displacement.x * norm.x,
         y: displacement.y * norm.y
       }
-      log('momentum', event.point, transformed);
+      log({verbose: true}, 'momentum', event.point, transformed);
 
       // apply the transformation
       event.point.x += transformed.x;

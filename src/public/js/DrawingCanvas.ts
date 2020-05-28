@@ -88,7 +88,6 @@ export class DrawingCanvas {
     this.socketServer = sock;
     for (let tool of this.drawingTools) {
       tool.channel = this.socketServer;
-      console.log("set chan for " + tool.name)
     }
   }
   public getSocketServer(): SocketServer | null {
