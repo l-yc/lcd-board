@@ -24,6 +24,9 @@ class App {
     router.get('/', function (req: Request, res: Response) {
       res.render('index', { title: 'lcd-board' });
     });
+    router.get('/assets/*', function (req: Request, res: Response) {
+      res.sendFile(path.join(__dirname, req.url));
+    });
 
     this.express.use('/', router);
   }
