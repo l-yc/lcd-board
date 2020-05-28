@@ -4,6 +4,9 @@ module.exports = {
   mode: 'development',
   devtool: 'inline-source-map',
   watch: true,
+  resolve: {
+    extensions: ['.ts', '.js', '.json']
+  },
   output: {
     filename: 'bundle.js',
   },
