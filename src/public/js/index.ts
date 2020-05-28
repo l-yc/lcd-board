@@ -2,7 +2,7 @@
 import paper from 'paper';
 
 import { log } from './utils';
-import { DrawingTool, Pen, WeightedPenTool } from './DrawingTool';
+import { DrawingTool, Pen, WeirdPen } from './DrawingTool';
 import { DrawingCanvas } from './DrawingCanvas';
 import { SocketServer } from './SocketServer';
 import { UI } from './UI';
@@ -18,7 +18,7 @@ window.onload = () => {
 
   let tools = [
     new Pen(),
-    new WeightedPenTool('WPen', 'WPEN')
+    new WeirdPen('WPen', 'WPEN')
   ];
 
   let colors = [
