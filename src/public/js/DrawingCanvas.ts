@@ -1,9 +1,12 @@
+import paper from 'paper'
+
 import { SocketServer } from './SocketServer';
 import { DrawingMember } from './DrawingMember';
 import { DrawingTool } from './DrawingTool';
 
 export class DrawingCanvas {
-  private drawingMembers: DrawingMember[] = [];
+  private drawingMembersMap: Map<string, DrawingMember> = new Map();
+
   private drawingTools: DrawingTool[] = [];
   private activeDrawingToolIndex = 0;
 
@@ -45,12 +48,18 @@ export class DrawingCanvas {
   }
 
 
+  public getDrawingMember(id: string): DrawingMember | null {
+    return this.drawingMembersMap.get(id) || null;
+  }
   public getDrawingMembers(): DrawingMember[] {
-    return this.drawingMembers;
+    return Array.from(this.drawingMembersMap.values());
   }
   public setDrawingMembers(members: DrawingMember[]) {
-    this.drawingMembers = members;
-    for (let member of members) member.configureUsingDrawingTools(this.drawingTools);
+    this.drawingMembersMap.clear();
+    for (let member of members) {
+      this.drawingMembersMap.set(member.id, member);
+      member.configureUsingDrawingTools(this.drawingTools);
+    }
   }
 
 

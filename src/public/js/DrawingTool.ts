@@ -7,10 +7,11 @@ import { DrawEvent, DrawEventAction } from '../../Socket';
 import { SocketServer } from './SocketServer';
 import { DrawingCanvas } from './DrawingCanvas';
 
+interface DrawEventProcessingResult {success: boolean, broadcast: boolean};
 class DrawingTool {
   protected tool: paper.Tool;
   protected path: paper.Path | null;
-  protected pathsDrawnCount = 0;
+  protected drawCount = 0;
   readonly id: string;
 
   public canvas: DrawingCanvas | null = null;
@@ -122,53 +123,106 @@ class DrawingTool {
       }
     }
 
+    let result = this.processDrawEvent(event);
+    
+    if (event.action == "begin") this.drawCount += 1;
+
     if (event.action == "end") {
       // we do some cleanup when a draw action ends
-      this.path = null;
       this.previousDrawEvent = null;
       this.sizeAdjustmentFactor = 1;
 
     } else {
-      // handle draw action
-      // process and handle all properties
-      let color = new paper.Color(event.color);
-      let size = event.adjustedSize;
-
-      let firstEventCall = event.action == "begin";
-
-      // create new path for each line segment between two draw events
-      this.path = new paper.Path();
-      this.path.strokeCap = 'round';
-
-      // apply settings
-      this.path.strokeColor = color;
-      this.path.strokeWidth = size;
-
-      // increment internal paths drawn counter for each stroke
-      if (firstEventCall) this.pathsDrawnCount += 1;
-
-      // if this stroke is just due to a property change rather than a new stroke, we connect it with the previous stroke.
-      if (this.previousDrawEvent) {
-        this.path.add(new paper.Point(this.previousDrawEvent.point));
-      }
-
-      // we add a new point for the current location
-      this.path.add(new paper.Point(event.point));
-
-      // update cached prev draw event
+      // update cached previous draw event
       this.previousDrawEvent = event;
     }
 
     // broadcast draw event to others if required
-    if (this.channel && !event.originUserId) {
-      this.channel.sendDrawEvent(event, this.id + "_" + this.pathsDrawnCount);
+    if (result.broadcast && this.channel && !event.originUserId) {
+      this.channel.sendDrawEvent(event, this.id + "_" + this.drawCount);
     }
+  }
+
+
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    let color = new paper.Color(event.color);
+    let size = event.adjustedSize || event.size;
+
+    // create new path for each line segment between two draw events
+    this.path = new paper.Path();
+    this.path.strokeCap = 'round';
+
+    // apply settings
+    this.path.strokeColor = color;
+    this.path.strokeWidth = size;
+
+    // connect it with the previous stroke by adding starting point at previous stroke.
+    if (this.previousDrawEvent) {
+      this.path.add(new paper.Point(this.previousDrawEvent.point));
+    }
+
+    // add a new point for the current location
+    this.path.add(new paper.Point(event.point));
+
+    // cleanup once things end
+    if (event.action == "end") this.path = null;
+
+    return {success: true, broadcast: true};
   }
 
   public activate() {
     this.tool.activate();
   }
 };
+
+class Eraser extends DrawingTool {
+
+  protected eraserPointer: paper.Path.Circle | null = null;
+  
+  public constructor(id?: string) {
+    super("Eraser", id || "THANOS_SNAP");
+    this.size = 30;
+  }
+  public clone(id?: string): Eraser {
+    let newClone = new Eraser(id || this.id);
+    newClone.size = this.size;
+    return newClone;
+  }
+
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    let point = event.point; 
+    let size = (event.adjustedSize || event.size)/2;
+    if (!this.eraserPointer) {
+      this.eraserPointer = new paper.Path.Circle({
+          center: point,
+          radius: size
+      });
+      this.eraserPointer.strokeWidth = 1;   
+      this.eraserPointer.strokeColor = new paper.Color('#aaaaaa');
+      this.eraserPointer.fillColor = new paper.Color('#ffffff');
+    }
+    switch (event.action) {
+      case 'begin':
+        break;
+      case 'move':
+        this.eraserPointer.translate(new paper.Point(event.delta));
+        break;
+      case 'end':
+        this.eraserPointer.remove();
+        this.eraserPointer = null;
+        return {success: true, broadcast: true};
+        break;
+    }
+
+    let hitTestResult = paper.project.hitTestAll(this.eraserPointer.position, {fill: true, stroke: true, segments: true, tolerance: size});
+    for (let result of hitTestResult) {
+      if (result.item && result.item != this.eraserPointer) {
+        result.item.remove();
+      } 
+    }
+    return {success: true, broadcast: true};
+  }
+}
 
 class Pen extends DrawingTool {
   public constructor(id?: string) {
@@ -184,7 +238,7 @@ class Pen extends DrawingTool {
 
 class FountainPen extends DrawingTool {
   public constructor(id?: string) {
-    super("Fountain", id || "FOUNTAIN_PEN");
+    super("Fountain Pen", id || "FOUNTAIN_PEN");
   }
   public clone(id?: string): FountainPen {
     let newClone = new FountainPen(id || this.id);
@@ -212,12 +266,12 @@ class LaserPointer extends DrawingTool {
   protected color: paper.Color = new paper.Color('red');
   public size: number = 5;
 
-  public constructor(name: string, id?: string) {
-    super(name, id);
+  public constructor(id?: string) {
+    super("Laser Pointer", id || "THE_SUN_IS_A_DEADLY_LASER");
   }
 
   public clone(id?: string): LaserPointer {
-    let newClone = new LaserPointer(this.name, id || this.id);
+    let newClone = new LaserPointer(id || this.id);
     newClone.size = this.size;
     return newClone;
   }
@@ -228,42 +282,38 @@ class LaserPointer extends DrawingTool {
     return result;
   }
 
-  public handle(event: DrawEvent) {
-    log('handling', event);
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    if (!this.pointer) {
+      this.pointer = new paper.Path.Circle({
+        center: event.point,
+        radius: this.size
+      });
+      this.pointer.fillColor = this.color;
+    }
     switch (event.action) {
       case 'begin':
-        this.pointer = new paper.Path.Circle({
-          center: event.point,
-          radius: this.size
-        });
-        this.pointer.fillColor = this.color;
         break;
       case 'move':
-        log('wtf move you lil shit ', this.pointer);
-        this.pointer?.translate(new paper.Point(event.delta));
+        this.pointer.translate(new paper.Point(event.delta));
         break;
       case 'end':
-        this.pointer?.remove();
+        this.pointer.remove();
         this.pointer = null;
         break;
     }
-
-    // broadcast draw event to others if required
-    if (this.channel && !event.originUserId) {
-      this.channel.sendDrawEvent(event, this.id + "_" + this.pathsDrawnCount);
-    }
+    return {success: true, broadcast: true};
   }
 };
 
 // supposed to be a weighted pen but it's weird, hence the name
 class WeirdPen extends DrawingTool {
 
-  public constructor(name: string, id?: string) {
-    super(name, id);
+  public constructor(id?: string) {
+    super("Weird Pen", id || "WEIRDO");
   }
 
   public clone(id?: string): WeirdPen {
-    let newClone = new WeirdPen(this.name, id || this.id);
+    let newClone = new WeirdPen(id || this.id);
     newClone.size = this.size;
     return newClone;
   }
@@ -340,7 +390,7 @@ class WeirdPen extends DrawingTool {
       this.path.strokeWidth = size;
 
       // increment internal paths drawn counter for each stroke
-      if (firstEventCall) this.pathsDrawnCount += 1;
+      if (firstEventCall) this.drawCount += 1;
 
       // if this stroke is just due to a property change rather than a new stroke, we connect it with the previous stroke.
       if (strokePropertiesChanged && this.previousDrawEvent) {
@@ -356,9 +406,9 @@ class WeirdPen extends DrawingTool {
 
     // broadcast draw event to others if required
     if (this.channel && !event.originUserId) {
-      this.channel.sendDrawEvent(event, this.id + "_" + this.pathsDrawnCount);
+      this.channel.sendDrawEvent(event, this.id + "_" + this.drawCount);
     }
   }
 };
 
-export { DrawingTool, Pen, FountainPen, WeirdPen, LaserPointer };
+export { DrawingTool, Pen, FountainPen, WeirdPen, Eraser, LaserPointer };

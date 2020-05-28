@@ -2,7 +2,7 @@
 import paper from 'paper';
 
 import { log } from './utils';
-import { DrawingTool, Pen, FountainPen, WeirdPen, LaserPointer } from './DrawingTool';
+import { DrawingTool, Pen, FountainPen, WeirdPen, Eraser, LaserPointer } from './DrawingTool';
 import { DrawingCanvas } from './DrawingCanvas';
 import { SocketServer } from './SocketServer';
 import { UI } from './UI';
@@ -19,8 +19,9 @@ window.onload = () => {
   let tools = [
     new Pen(),
     new FountainPen(),
-    new WeirdPen('WPen', 'WPEN'),
-    new LaserPointer('Laser Pointer', 'LASER_POINTER'),
+    new WeirdPen(),
+    new Eraser(),
+    new LaserPointer(),
   ];
 
   let colors = [

@@ -24,30 +24,32 @@ export class SocketServer {
 
     this.socket.on('room whiteboard', (whiteboard: DrawEvent[]) => { // after joining
       log('received room whiteboard: %o', whiteboard);
-      let dt: { [group: string]: DrawingTool } = {};
+      let deGroups: { [group: string]: DrawingTool } = {};
       let cnt = 0;
-      for (let drawEvent of whiteboard) {
-        if (!drawEvent.group) continue;
+      const currentUserMemberObj = this.ui?.drawingCanvas?.getDrawingMember(this.getUserId());
 
-        let cur: DrawingTool;
-        if (!dt[drawEvent.group]) {
-          cur = new DrawingTool(`roomInitialiserWorker${cnt}`);
-          dt[drawEvent.group] = cur;
-        } else {
-          cur = dt[drawEvent.group];
+      if (currentUserMemberObj) {
+        for (let drawEvent of whiteboard) {
+          if (!drawEvent.group) continue;
+
+          let tool: DrawingTool | null;
+          if (!(tool = deGroups[drawEvent.group])) {
+            tool = deGroups[drawEvent.group] = 
+              currentUserMemberObj.getDrawingTool(drawEvent.toolId).clone(`roomInitialiserWorker${cnt}`);
+            cnt += 1;
+          }
+
+          tool.handle(drawEvent);
         }
-        cur.handle(drawEvent);
-      };
+      }
+
     });
 
     this.socket.on('draw event', (drawEvent: DrawEvent) => {
       log('received draw event');
       if (drawEvent.originUserId != this.getUserId()) {
-        for (let member of this.ui?.drawingCanvas?.getDrawingMembers() || []) {
-          if (member.id == drawEvent.originUserId) {
-            member.handle(drawEvent);
-            break;
-          }
+        if (drawEvent.originUserId) {
+          this.ui?.drawingCanvas?.getDrawingMember(drawEvent.originUserId)?.handle(drawEvent);
         }
       }
     });

@@ -33,5 +33,7 @@ export class DrawingMember {
   handle(event: DrawEvent) {
     if (event.originUserId == this.id)
       this.getDrawingTool(event.toolId).handle(event)
+    else
+      log("warning: the draw event provided does not originate from the drawing member in question. not handling.")
   }
 }
