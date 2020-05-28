@@ -156,7 +156,7 @@ class SocketServer {
 
   configureDrawingCanvas() {
     if (this.ui?.drawingCanvas) {
-        this.ui.drawingCanvas.setSocketServer(this);
+      this.ui.drawingCanvas.setSocketServer(this);
     }
   }
 
@@ -225,14 +225,19 @@ class DrawingTool {
 
   protected handleMouseEvent(event: any) {
     log('received', event.type)
+    let drawEvent = this.processMouseEventAsDrawEvent(event);
+    if (drawEvent) this.handle(drawEvent);
+  }
+
+  protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
     let action: DrawEventAction;
     switch (event.type) {
       case "mousedown": action = "begin"; break;
       case "mousedrag": action = "move"; break;
       case "mouseup"  : action = "end"; break;
-      default: return;
+      default: return null;
     }
-    this.handle({
+    return {
       action: action,
       timeStamp: event.timeStamp,
       point: {
@@ -241,22 +246,27 @@ class DrawingTool {
       },
       toolId: this.id,
       color: this.canvas?.getActiveColor() || '#000000',
-      size: this.size + Math.min(this.size, 10) * (this.sizeAdjustmentFactor - 1)
-    });
+      size: this.size + (this.pressureSensitive ? (Math.min(this.size, 10) * (this.sizeAdjustmentFactor - 1)) : 0)
+    };
+  }
+
+  protected pressureSensitive = false;
+  public isPressureSensitive(): boolean {
+    return this.pressureSensitive;
   }
 
   protected sizeAdjustmentFactor: number = 1;
   public interceptPressureEventsOnCanvas(canvas: HTMLElement) {
     if (canvas) {
       let pointerEventPressureHandler = (event: any) => {
-        if (event.buttons && event.pressure) {
+        if (this.pressureSensitive && event.buttons && event.pressure) {
           this.sizeAdjustmentFactor = event.pressure + 0.5;
         }
       }
 
       let webkitForcePressureEventHandler = (event: any) => {
         //handles apple's proprietary force touch api
-        if (event.webkitForce) {
+        if (this.pressureSensitive && event.webkitForce) {
           this.sizeAdjustmentFactor = Math.min(0.5 + Math.max(0, event.webkitForce - 0.75), 1.5);
         }
       }
@@ -323,6 +333,13 @@ class DrawingTool {
     this.tool.activate();
   }
 };
+
+class Pen extends DrawingTool {
+  constructor(id?: string) {
+    super("Pen", id || "PEN");
+  }
+  protected pressureSensitive = true;
+}
 
 class WeightedPenTool extends DrawingTool {
 
@@ -532,16 +549,15 @@ class DrawingCanvas {
   }
 
   public setSocketServer(sock: SocketServer) {
-      this.socketServer = sock;
-      for (let tool of this.drawingTools) {
-          tool.channel = this.socketServer;
-          console.log("set chan for " + tool.name)
-      }
+    this.socketServer = sock;
+    for (let tool of this.drawingTools) {
+      tool.channel = this.socketServer;
+      console.log("set chan for " + tool.name)
+    }
   }
   public getSocketServer(): SocketServer | null {
-      return this.socketServer;
+    return this.socketServer;
   }
-
 }
 
 
@@ -553,7 +569,7 @@ window.onload = () => {
   }
 
   let tools = [
-    new DrawingTool('Pen', 'PEN'),
+    new Pen(),
     new WeightedPenTool('WPen', 'WPEN')
   ];
 
