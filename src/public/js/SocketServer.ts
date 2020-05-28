@@ -1,5 +1,5 @@
 import io from 'socket.io-client';
- 
+
 import { log } from './utils';
 
 import { DrawEvent } from '../../Socket';
@@ -15,7 +15,8 @@ export class SocketServer {
 
   constructor(ui?: UI) {
     this.socket = io({
-      autoConnect: true
+      autoConnect: true,
+      path: window.location.pathname + "socket.io"
     });
 
     this.socket.on('connect', () => {
@@ -34,7 +35,7 @@ export class SocketServer {
 
           let tool: DrawingTool | null;
           if (!(tool = deGroups[drawEvent.group])) {
-            tool = deGroups[drawEvent.group] = 
+            tool = deGroups[drawEvent.group] =
               currentUserMemberObj.getDrawingTool(drawEvent.toolId).clone(`roomInitialiserWorker${cnt}`);
             cnt += 1;
           }
