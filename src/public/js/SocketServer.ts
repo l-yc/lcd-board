@@ -42,10 +42,12 @@ export class SocketServer {
 
     this.socket.on('draw event', (drawEvent: DrawEvent) => {
       log('received draw event');
-      for (let member of this.ui?.drawingCanvas?.getDrawingMembers() || []) {
-        if (member.id == drawEvent.originUserId) {
-          member.handle(drawEvent);
-          break;
+      if (drawEvent.originUserId != this.getUserId()) {
+        for (let member of this.ui?.drawingCanvas?.getDrawingMembers() || []) {
+          if (member.id == drawEvent.originUserId) {
+            member.handle(drawEvent);
+            break;
+          }
         }
       }
     });
