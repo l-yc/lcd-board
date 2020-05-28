@@ -192,35 +192,42 @@ class Eraser extends DrawingTool {
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     let point = event.point; 
     let size = (event.adjustedSize || event.size)/2;
-    if (!this.eraserPointer) {
-      this.eraserPointer = new paper.Path.Circle({
+
+    if (!event.originUserId) { 
+      //only display eraser indicator locally
+      if (!this.eraserPointer) {
+        this.eraserPointer = new paper.Path.Circle({
           center: point,
           radius: size
-      });
-      this.eraserPointer.strokeWidth = 1;   
-      this.eraserPointer.strokeColor = new paper.Color('#aaaaaa');
-      this.eraserPointer.fillColor = new paper.Color('#ffffff');
-    }
-    switch (event.action) {
-      case 'begin':
+        });
+        this.eraserPointer.strokeWidth = 1;   
+        this.eraserPointer.strokeColor = new paper.Color('#aaaaaa');
+        this.eraserPointer.fillColor = new paper.Color('#ffffff');
+      }
+      switch (event.action) {
+        case 'begin':
+          break;
+        case 'move':
+          this.eraserPointer.translate(new paper.Point(event.delta));
         break;
-      case 'move':
-        this.eraserPointer.translate(new paper.Point(event.delta));
-        break;
-      case 'end':
-        this.eraserPointer.remove();
+        case 'end':
+          this.eraserPointer.remove();
         this.eraserPointer = null;
         return {success: true, broadcast: true};
         break;
+      }
     }
 
-    let hitTestResult = paper.project.hitTestAll(this.eraserPointer.position, {fill: true, stroke: true, segments: true, tolerance: size});
+    let hitTestResult = paper.project.hitTestAll(new paper.Point(point), {fill: true, stroke: true, segments: true, tolerance: size});
+    let removedStuff = false;
+
     for (let result of hitTestResult) {
       if (result.item && result.item != this.eraserPointer) {
         result.item.remove();
+        removedStuff = true;
       } 
     }
-    return {success: true, broadcast: true};
+    return {success: true, broadcast: event.action != 'move' || removedStuff};
   }
 }
 
