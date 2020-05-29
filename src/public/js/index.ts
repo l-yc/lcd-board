@@ -2,7 +2,7 @@
 import paper from 'paper';
 
 import { log } from './utils';
-import { DrawingTool, Pen, FountainPen, DrunkPen, Eraser, LaserPointer } from './DrawingTool';
+import { DrawingTool, Pen, FountainPen, DrunkPen, Eraser, LaserPointer, Selector } from './DrawingTool';
 import { DrawingCanvas } from './DrawingCanvas';
 import { SocketServer } from './SocketServer';
 import { UI } from './UI';
@@ -16,12 +16,16 @@ window.onload = () => {
     return;
   }
 
+  paper.setup('myCanvas');
+  log("configured paper.js canvas");
+
   let tools = [
     new Pen(),
     new FountainPen(),
     new Eraser(),
     new LaserPointer(),
     new DrunkPen(),
+    new Selector()
   ];
 
   let colors = [
@@ -35,8 +39,6 @@ window.onload = () => {
     '#bb00bb',
   ];
 
-  paper.setup('myCanvas');
-  log("configured paper.js canvas");
   let drawingCanvas = new DrawingCanvas(canvas, tools, colors);
   log("configured DrawingCanvas");
   let ui            = new UI(drawingCanvas);

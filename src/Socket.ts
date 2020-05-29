@@ -14,7 +14,7 @@ interface RoomInfo {
   users: { [uid: string]: User };
 };
 
-type DrawEventAction = "begin" | "move" | "end"
+type DrawEventAction = "begin" | "move" | "end";
 interface DrawEvent {
   group?: string,
   originUserId?: string,
