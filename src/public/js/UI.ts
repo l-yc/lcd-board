@@ -11,6 +11,11 @@ export class UI {
   readonly membersStatus: HTMLElement | null;
   readonly membersContainer: HTMLElement | null;
   readonly topBar: HTMLElement | null;
+  readonly toolPickerContainer: HTMLElement | null;
+  readonly colorPickerContainer: HTMLElement | null;
+  readonly sizePickerContainer: HTMLElement | null;
+  readonly sizePickerSlider: HTMLElement | null;
+
 
   constructor(canvas: DrawingCanvas) {
     this.drawingCanvas = canvas;
@@ -20,6 +25,10 @@ export class UI {
     this.membersStatus = document.getElementById('membersStatus');
     this.membersContainer = document.getElementById('members-container')
     this.topBar = document.getElementById("top-banner-container");
+    this.toolPickerContainer = document.getElementById('tool-picker-container');
+    this.colorPickerContainer = document.getElementById('color-picker-container');
+    this.sizePickerContainer = document.getElementById('size-picker-container');
+    this.sizePickerSlider = document.getElementById('sizePickerSlider');
 
     //auto hide top bar on init
     this.setTopBarVisible(false, false);
@@ -60,6 +69,16 @@ export class UI {
     let activeTool = this.drawingCanvas.getActiveTool();
     this.setStatusColor(this.toolStatus, activeTool.getColor());
     this.setStatusText(this.toolStatus, activeTool.icon, activeTool.name);
+
+    let sizeSlider = this.sizePickerSlider as HTMLInputElement;
+    if (sizeSlider) {
+      let minSize = activeTool.minSize || 2;
+      let size = activeTool.getSize();
+      let maxSize = Math.min(activeTool.maxSize || 50, 50) + minSize;
+      sizeSlider.min   = '' + minSize;
+      sizeSlider.max   = '' + maxSize;
+      sizeSlider.value = '' + size; 
+    }
   }
 
 
@@ -135,7 +154,8 @@ export class UI {
   public configurePickers() {
     if (!this.drawingCanvas) return;
 
-    const toolPickerContainer = document.getElementById('tool-picker-container');
+    // Tool Picker
+    const toolPickerContainer = this.toolPickerContainer;
     if (toolPickerContainer) {
       toolPickerContainer.innerHTML = '';
 
@@ -165,7 +185,9 @@ export class UI {
         toolPickerContainer.appendChild(button);
       }
     }
-    const colorPickerContainer = document.getElementById('color-picker-container');
+
+    // Color Picker
+    const colorPickerContainer = this.colorPickerContainer;
     if (colorPickerContainer) {
       colorPickerContainer.innerHTML = '';
       let activeColor = this.drawingCanvas.getActiveColor(); 
@@ -213,6 +235,16 @@ export class UI {
       }
       colorPickerContainer.appendChild(colorPickerButton);
     }
+
+    // Size Picker
+    const sizePickerSlider = this.sizePickerSlider as HTMLInputElement;
+    if (sizePickerSlider) {
+      sizePickerSlider.onchange = () => {
+        this.drawingCanvas?.getActiveTool().setSize(+sizePickerSlider.value);
+      }
+    }
+
+    this.updateToolStatus();
   }
 
 

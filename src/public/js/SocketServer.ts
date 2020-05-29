@@ -1,5 +1,7 @@
 import io from 'socket.io-client';
 
+import paper from 'paper';
+
 import { log } from './utils';
 
 import { DrawEvent } from '../../Socket';
@@ -35,8 +37,8 @@ export class SocketServer {
       let deGroups: { [group: string]: DrawingTool } = {};
       let cnt = 0;
       const currentUserMemberObj = this.ui?.drawingCanvas?.getDrawingMember(this.getUserId());
-
       if (currentUserMemberObj) {
+        paper.project.activeLayer.removeChildren();
         for (let drawEvent of whiteboard) {
           if (!drawEvent.group) continue;
 

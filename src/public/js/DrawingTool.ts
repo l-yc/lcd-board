@@ -22,6 +22,9 @@ class DrawingTool {
   readonly icon: string | null;
 
   protected size: number = 2;
+  readonly minSize: number | null = 2;
+  readonly maxSize: number | null = 30;
+
   protected color: string | null = null;
 
   public constructor(name: string, id?: string, icon?: string | null) {
@@ -53,7 +56,12 @@ class DrawingTool {
   }
 
   public setSize(size: number) {
-    this.size = size;
+    if (this.maxSize && size >= this.maxSize) 
+      this.size = this.maxSize;
+    else if (this.minSize && size <= this.minSize)
+      this.size = this.minSize;
+    else 
+      this.size = size;
   }
   public getSize(): number {
     return this.size;
@@ -148,7 +156,7 @@ class DrawingTool {
 
     if (!event.adjustedSize) {
       if (this.shouldAutoAdjustSizeToFactor()) {
-        event.adjustedSize = event.size * (1 + (Math.min(event.size, 10) * (this.sizeAdjustmentFactor - 1)));
+        event.adjustedSize = Math.max(1,event.size + (Math.min(event.size, 30) * (this.sizeAdjustmentFactor - 1)));
       } else {
         event.adjustedSize = event.size;
       }
@@ -285,9 +293,12 @@ class Eraser extends DrawingTool {
 
   protected eraserPointer: paper.Path.Circle | null = null;
   
+  readonly minSize = 30;
+  protected size = 30;
+  readonly maxSize = 1000;
+
   public constructor(id?: string) {
     super("Eraser", id || "THANOS_SNAP", '&#xf12d;');
-    this.size = 30;
   }
   public clone(id?: string): Eraser {
     let newClone = new Eraser(id || this.id);
@@ -366,11 +377,11 @@ class FountainPen extends DrawingTool {
     return true;
   }
   protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
-    if (this.previousDrawEvent) {
+    if (this.previousDrawEvent && event.type == "mousedrag") {
       let distance = event.delta.length;
 
       let oldFactor = this.sizeAdjustmentFactor;
-      let newFactor = 1+Math.max(-0.5, Math.min((20-distance)/20, 0.25));
+      let newFactor = 1+Math.max(-0.5, Math.min((10-distance)/10, 0.25));
 
       this.sizeAdjustmentFactor = Math.max(0.5, oldFactor - 0.05, Math.min(newFactor, oldFactor + 0.05, 1.5)); //Allow maximum change of 0.05
     }
@@ -380,7 +391,10 @@ class FountainPen extends DrawingTool {
 
 class LaserPointer extends DrawingTool {
   protected pointer: paper.Path.Circle | null = null;
-  public size: number = 5;
+
+  readonly minSize: number = 5;
+  protected size: number = 5;
+  readonly maxSize: number = 20;
 
   public constructor(id?: string) {
     super("Laser Pointer", id || "THE_SUN_IS_A_DEADLY_LASER", "&#xf185;");
