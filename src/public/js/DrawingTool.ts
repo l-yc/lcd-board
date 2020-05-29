@@ -27,10 +27,14 @@ class DrawingTool {
 
     this.tool = tool;
 
-    // Define a mousedown anousedrag handler
+    // Define mouse events handlers
     tool.onMouseDown = this.handleMouseEvent.bind(this);
     tool.onMouseDrag = this.handleMouseEvent.bind(this);
     tool.onMouseUp   = this.handleMouseEvent.bind(this);
+
+    // Define key events handlers
+    tool.onKeyDown   = this.handleKeyEvent.bind(this);
+    tool.onKeyUp     = this.handleKeyEvent.bind(this);
 
     this.name = name;
     this.id = id || (((1+Math.random())*0x10000)|0).toString(16).substring(1); //uses id or generates 8 character hex as id
@@ -47,6 +51,12 @@ class DrawingTool {
   protected handleMouseEvent(event: any) {
     log({verbose: true}, 'received', event.type)
     let drawEvent = this.processMouseEventAsDrawEvent(event);
+    if (drawEvent) this.handle(drawEvent);
+  }
+
+  protected handleKeyEvent(event: any) {
+    log({verbose: true}, 'received', event.type);
+    let drawEvent = this.processKeyEventAsDrawEvent(event);
     if (drawEvent) this.handle(drawEvent);
   }
 
@@ -74,6 +84,10 @@ class DrawingTool {
       size: this.size,
       persistent: true
     };
+  }
+
+  protected processKeyEventAsDrawEvent(event: any): DrawEvent | null { // override this!
+    return null;
   }
 
   protected sizeAdjustmentFactor: number = 1;
@@ -180,6 +194,13 @@ class Selector extends DrawingTool {
 
   public constructor(id?: string) {
     super('Selector', id || 'SELECTOR');
+
+    paper.project.view.onMouseDown = (event: paper.MouseEvent) => {
+      log(paper.project.selectedItems);
+      if (paper.project.selectedItems.length > 0) {
+        paper.project.deselectAll();
+      }
+    };
   }
 
   public clone(id?: string): Selector {
@@ -187,14 +208,23 @@ class Selector extends DrawingTool {
     return newClone;
   }
 
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
-    paper.project.view.onMouseDown = (event: paper.MouseEvent) => {
-      log(paper.project.selectedItems);
-      if (paper.project.selectedItems.length > 0) {
-        paper.project.deselectAll();
-      }
-    };
+  protected processKeyEventAsDrawEvent(event: any): DrawEvent | null {
+    switch (event.type) {
+      case 'keydown': 
+        switch (event.key) {
+          case 'delete':
+            for (let item of paper.project.selectedItems) {
+              item.remove(); // FIXME this is not broadcasted!!!
+            }
+        }
+        break;
+      case 'keyup':
+        break;
+    }
+    return null;
+  }
 
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (!this.selectionBox) {
       this.selectionBox = new paper.Path.Rectangle(
         new paper.Point(event.point),
