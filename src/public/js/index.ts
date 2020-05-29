@@ -2,7 +2,7 @@
 import paper from 'paper';
 
 import { log } from './utils';
-import { DrawingTool, Pen, FountainPen, WeirdPen, Eraser, LaserPointer } from './DrawingTool';
+import { DrawingTool, Pen, FountainPen, DrunkPen, Eraser, LaserPointer } from './DrawingTool';
 import { DrawingCanvas } from './DrawingCanvas';
 import { SocketServer } from './SocketServer';
 import { UI } from './UI';
@@ -19,9 +19,9 @@ window.onload = () => {
   let tools = [
     new Pen(),
     new FountainPen(),
-    new WeirdPen(),
     new Eraser(),
     new LaserPointer(),
+    new DrunkPen(),
   ];
 
   let colors = [
@@ -44,6 +44,7 @@ window.onload = () => {
   let socketServer  = new SocketServer(ui);
   log("configured SocketServer");
 
+  ui.configureStatusIndicators();
   ui.configurePickers();
   ui.configureLoginForm();
 };

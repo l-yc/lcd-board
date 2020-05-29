@@ -21,6 +21,13 @@ export class SocketServer {
 
     this.socket.on('connect', () => {
       log('connected!');
+      ui?.updateConnectionStatus(true);
+    });
+
+    this.socket.on('disconnect', () => {
+      log('disconnected :<');
+      ui?.updateConnectionStatus(false);
+      ui?.performLogout();
     });
 
     this.socket.on('room whiteboard', (whiteboard: DrawEvent[]) => { // after joining

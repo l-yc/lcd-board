@@ -5,63 +5,142 @@ html, body, main {
 }
 
 #main-container {
-  display: flex;
-  flex-flow: column nowrap;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0;
   overflow: hidden;
 }
 
-/* member list */
-.members-container {
-  overflow: scroll;
-}
-.members-container span {
-  padding-right: 8px;
+#top-banner-container {
+  display: flex;
+  flex-flow: column nowrap;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 8px;
+  background: #fafafa;
+  -moz-user-select: none; 
+  -webkit-user-select: none; 
+  -ms-user-select: none; 
+  user-select: none;
 }
 
-/* drawing settings */
-.pickerContainer {
-  margin: 0px 8px;
+@supports ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
+  #top-banner-container {
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    background: #e0e0e022;
+  }
 }
-.pickerContainer * {
+
+br, hr {
+  color: #8881;
+  border-width: 1px;
   margin: 2px;
-  min-width: 30px;
-  height: 30px;
+}
+
+canvas[resize] {
+  width: 100vw;
+  height: 100vh;
+
+}
+
+/* status container */
+#status-container {
+  display: flex;
+  flex-flow: row nowrap;
+  align-content: center;
+  width: 100%;
+  padding: 2px 0px;
+  margin: 0px 8px;
+  transition: all 0.2s ease-in-out;
+}
+#status-container > div {
+  border: 2px solid #0000; //transparent border
+  cursor: pointer;
+}
+#status-container > div > span {
+  padding: 0px 16px;
+  line-height: 40px;
+  text-align: center;
+  cursor: pointer;
+}
+
+/* members list container */
+
+#members-container {
+  margin: 0px 8px;
+  padding: 0;
+  height: 44px;
+  flex-grow: 1;
+  display: flex;
+  flex-flow: row nowrap;
+  overflow-y: scroll;
+  transition: all 0.2s ease-in-out;
+}
+#members-container > span {
+  padding: 0px 16px;
+  line-height: 40px;
+  text-align: center;
+}
+#members-container * {
+  display: inline-block;
+}
+
+/* all drawing picker containers and stuff */
+.picker-container {
+  margin: 0px 8px;
+  height: 44px;
+  display: flex; 
+  align-content: center;
+  transition: all 0.2s ease-in-out;
+}
+.picker-container *, #members-container > span, #status-container > div {
+  margin: 2px;
+  min-width: 40px;
+  height: 40px;
   display: inline-block;
   -webkit-appearance: none;
   appearance: none;
   background-color: white;
   color: black;
-  border: 2px solid #0000;
-  border-radius: 15px;
+  border: none;
+  border-radius: 99999px;
   box-shadow: 2px 2px 4px 2px rgba(0, 0, 0, 0.1);
-  transition: box-shadow 0.2s ease-in-out;
+  transition: box-shadow 0.2s ease-in-out, transform 0.1s ease-in-out;
   z-index: 100;
 }
-.pickerContainer *:hover {
+.picker-container *:hover {
   box-shadow: 2px 2px 4px 2px rgba(0, 0, 0, 0.15);
   z-index: 102;
 }
-.pickerContainer *:active {
+.picker-container *:active {
   box-shadow: none !important;
+  transform: scale(0.95);
   z-index: 101;
 }
+
 .selectedOption {
-  border: 2px solid #ccc !important;
-  box-shadow: 4px 4px 6px 3px rgba(0, 0, 0, 0.15) !important;
+  transform: scale(1.08);
+  box-shadow: 4px 4px 10px 2px rgba(0, 0, 0, 0.15) !important;
   z-index: 103;
 }
+
 button.colorOption {
   opacity: 1.0;
-  width: 30px;
 }
 button.colorPicker {
-  margin: 0px;
-  background-color: white;
+  box-shadow: 2px 2px 4px 2px rgba(0, 0, 0, 0.05); /*slightly less shadow for optical balancing*/
 }
 button.toolOption {
-  padding: 0px 16px;
+  font-size: 20px;
+  text-align: center;
+  /*padding: 0px 16px;*/
 }
 input.sizeSlider {
   width: 200px;
@@ -98,16 +177,9 @@ input.textFieldOption {
   width: 50px;
 }
 
-/* drawing canvas */
-canvas[resize] {
-  width: 100%;
-  flex-shrink: 0;
-  flex-grow: 1;
-}
-
 /* login view elements */
 #login-overlay {
-  position: fixed;
+  position: absolute;
   width: 100%;
   height: 100%;
   top: 0;
@@ -116,6 +188,7 @@ canvas[resize] {
   right: 0;
   background: white;
   transition: opacity 0.3s ease-in-out;
+  z-index: 9999999;
 }
 
 @supports ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {

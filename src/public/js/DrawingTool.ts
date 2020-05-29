@@ -19,9 +19,12 @@ class DrawingTool {
 
   //Drawing tool properties
   readonly name: string;
-  public size: number = 2;
+  readonly icon: string | null;
 
-  public constructor(name: string, id?: string) {
+  protected size: number = 2;
+  protected color: string | null = null;
+
+  public constructor(name: string, id?: string, icon?: string | null) {
     // Create a simple drawing tool:
     let tool = new paper.Tool();
 
@@ -34,6 +37,7 @@ class DrawingTool {
 
     this.name = name;
     this.id = id || (((1+Math.random())*0x10000)|0).toString(16).substring(1); //uses id or generates 8 character hex as id
+    this.icon = icon || null;
     this.path = null;
     this.channel = null;
   }
@@ -42,6 +46,19 @@ class DrawingTool {
     let newClone = new DrawingTool(this.name, id || this.id);
     newClone.size = this.size;
     return newClone;
+  }
+
+  public setSize(size: number) {
+    this.size = size;
+  }
+  public getSize(): number {
+    return this.size;
+  }
+
+  public getColor(): string {
+    if (this.canvas) 
+      return this.canvas.getActiveColor();
+    return '#000000';
   }
 
   protected handleMouseEvent(event: any) {
@@ -70,8 +87,8 @@ class DrawingTool {
         y: event.point.y,
       },
       toolId: this.id,
-      color: this.canvas?.getActiveColor() || '#000000',
-      size: this.size,
+      color: this.getColor(),
+      size: this.getSize(),
       persistent: true
     };
   }
@@ -180,13 +197,17 @@ class Eraser extends DrawingTool {
   protected eraserPointer: paper.Path.Circle | null = null;
   
   public constructor(id?: string) {
-    super("Eraser", id || "THANOS_SNAP");
+    super("Eraser", id || "THANOS_SNAP", '&#xf12d;');
     this.size = 30;
   }
   public clone(id?: string): Eraser {
     let newClone = new Eraser(id || this.id);
     newClone.size = this.size;
     return newClone;
+  }
+  
+  public getColor(): string {
+    return 'gray'; //dummy color
   }
 
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
@@ -233,7 +254,7 @@ class Eraser extends DrawingTool {
 
 class Pen extends DrawingTool {
   public constructor(id?: string) {
-    super("Pen", id || "PEN");
+    super("Pen", id || "PEN", "&#xf305;");
   }
   public clone(id?: string): Pen {
     let newClone = new Pen(id || this.id);
@@ -245,7 +266,7 @@ class Pen extends DrawingTool {
 
 class FountainPen extends DrawingTool {
   public constructor(id?: string) {
-    super("Fountain Pen", id || "FOUNTAIN_PEN");
+    super("Fountain Pen", id || "F_PEN", "&#xf5ac;");
   }
   public clone(id?: string): FountainPen {
     let newClone = new FountainPen(id || this.id);
@@ -270,17 +291,20 @@ class FountainPen extends DrawingTool {
 
 class LaserPointer extends DrawingTool {
   protected pointer: paper.Path.Circle | null = null;
-  protected color: paper.Color = new paper.Color('red');
   public size: number = 5;
 
   public constructor(id?: string) {
-    super("Laser Pointer", id || "THE_SUN_IS_A_DEADLY_LASER");
+    super("Laser Pointer", id || "THE_SUN_IS_A_DEADLY_LASER", "&#xf185;");
   }
 
   public clone(id?: string): LaserPointer {
     let newClone = new LaserPointer(id || this.id);
     newClone.size = this.size;
     return newClone;
+  }
+
+  public getColor(): string {
+    return 'red';
   }
 
   protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
@@ -295,7 +319,7 @@ class LaserPointer extends DrawingTool {
         center: event.point,
         radius: this.size
       });
-      this.pointer.fillColor = this.color;
+      this.pointer.fillColor = new paper.Color(this.getColor());
     }
     switch (event.action) {
       case 'begin':
@@ -313,14 +337,14 @@ class LaserPointer extends DrawingTool {
 };
 
 // supposed to be a weighted pen but it's weird, hence the name
-class WeirdPen extends DrawingTool {
+class DrunkPen extends DrawingTool {
 
   public constructor(id?: string) {
-    super("Weird Pen", id || "WEIRDO");
+    super("Drunk Pen", id || "DONT_DRINK_AND_DRIVE", "&#xf0fc;");
   }
 
-  public clone(id?: string): WeirdPen {
-    let newClone = new WeirdPen(id || this.id);
+  public clone(id?: string): DrunkPen {
+    let newClone = new DrunkPen(id || this.id);
     newClone.size = this.size;
     return newClone;
   }
@@ -418,4 +442,4 @@ class WeirdPen extends DrawingTool {
   }
 };
 
-export { DrawingTool, Pen, FountainPen, WeirdPen, Eraser, LaserPointer };
+export { DrawingTool, Pen, FountainPen, DrunkPen, Eraser, LaserPointer };

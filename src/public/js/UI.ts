@@ -5,19 +5,72 @@ import { DrawingMember } from './DrawingMember';
 
 export class UI {
 
-  readonly drawingCanvas: DrawingCanvas | null = null;
-  constructor(canvas?: DrawingCanvas | null) {
-    if (canvas) this.drawingCanvas = canvas;
+  readonly drawingCanvas: DrawingCanvas;
+
+  readonly toolStatus  : HTMLElement | null;
+  readonly membersStatus: HTMLElement | null;
+  readonly membersContainer: HTMLElement | null;
+  readonly topBar: HTMLElement | null;
+
+  constructor(canvas: DrawingCanvas) {
+    this.drawingCanvas = canvas;
+
+    //initialize all html elements
+    this.toolStatus   = document.getElementById('toolStatus');
+    this.membersStatus = document.getElementById('membersStatus');
+    this.membersContainer = document.getElementById('members-container')
+    this.topBar = document.getElementById("top-banner-container");
+
+    //auto hide top bar on init
+    this.setTopBarVisible(false, false);
   }
 
-  updateRoomInfo(info: RoomInfo) {
-    let members = document.querySelector('.room-info .members-container .members') as HTMLElement;
-    if (!members) return;
+  private setStatusText(ele: HTMLElement | null, icon: string | null, text: string) {
+    if (ele) {
+      if (!icon) {
+        ele.innerHTML = '<span>' + text + '</span>';
+      }  else if (!icon.startsWith('la-')) {
+        ele.innerHTML = '<span><span class="las">' + icon + '</span>&nbsp;' + text + '</span>';
+      } else {
+        ele.innerHTML = '<span><span class="las ' + icon + '"></span>&nbsp;' + text + '</span>';
+      }
+    }
+  }
+
+  private setStatusColor(ele: HTMLElement | null, color?: string | null) {
+    if (ele) ele.style.borderColor = (color || '#0000');
+  }
+
+  public updateConnectionStatus(status: boolean) {
+    if (!this.membersStatus) return;
+    if (status) {
+      this.setStatusColor(this.membersStatus, '#0d0'); 
+      if (this.membersStatus.innerHTML.indexOf('Disconnected')) {
+        this.setStatusText(this.membersStatus, 'la-user', 'Connected');
+      }
+    } else {
+      this.setStatusColor(this.membersStatus, '#f00'); 
+      this.setStatusText(this.membersStatus, 'la-user-alt-slash', 'Disconnected');
+    }
+  }
+
+  public updateToolStatus() {
+    if (!this.drawingCanvas || !this.toolStatus) return;
+
+    let activeTool = this.drawingCanvas.getActiveTool();
+    this.setStatusColor(this.toolStatus, activeTool.getColor());
+    this.setStatusText(this.toolStatus, activeTool.icon, activeTool.name);
+  }
+
+
+  private cachedRoomInfo: RoomInfo | null = null;
+  public updateRoomInfo(info: RoomInfo) {
+    if (!this.membersContainer) return;
 
     const canvas = this.drawingCanvas;
     let drawingMembers: DrawingMember[] = [];
 
-    members.innerHTML = "";
+    this.membersContainer.innerHTML = "";
 
     for (let userId in info.users) {
       if (!info.users.hasOwnProperty(userId)) return;
@@ -26,13 +79,60 @@ export class UI {
 
       let u = document.createElement('span');
       u.innerText = info.users[userId].username as string;
-      members.appendChild(u);
+      this.membersContainer.appendChild(u);
     };
 
+    let iconChoice : string;
+    switch (drawingMembers.length) {
+      case 0: iconChoice = 'la-user-alt-slash'; break;
+      case 1: iconChoice = 'la-user'; break;
+      case 2: iconChoice = 'la-user-friends'; break;
+      default: iconChoice = 'la-users'; break;
+    }
+    this.setStatusText(this.membersStatus, iconChoice, drawingMembers.length + ' online');
+
     if (canvas) canvas.setDrawingMembers(drawingMembers);
+
+    this.cachedRoomInfo = info;
   }
 
-  configurePickers() {
+  protected topBarVisible = true;
+  public setTopBarVisible(visible: boolean, animated?: boolean) {
+    if (!this.topBar) return;
+
+    let elements = Array.from(this.topBar.children).slice(1);
+    for (let ele of elements) {
+      let htmlEle = ele as HTMLElement;
+      htmlEle.style.height = visible ? '44px' : '0'; 
+      htmlEle.style.transform = visible ? 'none' : 'translateY(-44px)', 
+      htmlEle.style.opacity = visible ? '1' : '0';
+      htmlEle.style.pointerEvents = visible ? 'auto' : 'none';
+
+      if (animated !== undefined && animated === false) {       
+        htmlEle.style.display = 'none';
+        setTimeout(() => {
+          htmlEle.style.display = 'inline-block' ;
+        }, 200);
+      }
+
+    };
+    this.topBarVisible = visible;
+  }
+  public isTopBarVisible() {
+    return this.topBarVisible;
+  }
+
+  public configureStatusIndicators() {
+    if (this.toolStatus) {
+      this.toolStatus.onclick = (e) => { this.setTopBarVisible(!this.topBarVisible); };
+      this.updateToolStatus()
+    }
+    if (this.membersStatus) {
+      this.membersStatus.onclick = (e) => { this.setTopBarVisible(!this.topBarVisible); };
+    }
+  }
+
+  public configurePickers() {
     if (!this.drawingCanvas) return;
 
     const toolPickerContainer = document.getElementById('tool-picker-container');
@@ -44,8 +144,8 @@ export class UI {
         tool.interceptPressureEventsOnCanvas(this.drawingCanvas.htmlCanvas);
 
         const button = document.createElement("button");
-        button.innerText = tool.name;
-        button.classList.add('toolOption');
+        button.innerHTML = tool.icon || tool.name;
+        button.classList.add('las', 'toolOption');
 
         if (tool == activeTool) 
           button.classList.add('selectedOption');
@@ -58,6 +158,8 @@ export class UI {
             option.classList.remove('selectedOption');
           };
           button.classList.add('selectedOption');
+
+          this.updateToolStatus();
         }
 
         toolPickerContainer.appendChild(button);
@@ -85,6 +187,8 @@ export class UI {
             option.classList.remove('selectedOption');
           };
           button.classList.add('selectedOption');
+          
+          this.updateToolStatus();
         }
         colorPickerContainer.appendChild(button);
       }
@@ -103,14 +207,21 @@ export class UI {
           colorPickerButton.classList.add('selectedOption');
           colorPickerButton.style.backgroundColor = result;
           cachedColor = result;
+
+          this.updateToolStatus();
         }
       }
       colorPickerContainer.appendChild(colorPickerButton);
     }
   }
 
-  configureLoginForm() {
+
+  // login handlers
+  private loginUsername: string | null = null;
+  private loginRoom: string | null = null;
+  public configureLoginForm() {
     const form = document.querySelector('#login-form') as HTMLFormElement;
+
     if (form) form.addEventListener('submit', (event) => {
       event.preventDefault();
       let data = new FormData(form);
@@ -120,6 +231,9 @@ export class UI {
         alert('You need to join a room with a username!');
         return;
       }
+
+      this.loginUsername = uname;
+      this.loginRoom = room;
 
       this.drawingCanvas?.getSocketServer()?.register(uname);
       this.drawingCanvas?.getSocketServer()?.join(room);
@@ -132,5 +246,26 @@ export class UI {
         }, 500);
       }
     });
+  }
+
+  public performLogout() {
+    const loginOverlay = document.getElementById('login-overlay');
+    if (loginOverlay) {
+      const isAlreadyLoggedOut = loginOverlay.style.opacity != '0';
+
+      if (!isAlreadyLoggedOut) {
+        loginOverlay.style.display = 'inline-block';
+        loginOverlay.style.opacity = '1';
+
+        const usernameField = document.getElementById('usernameField') as HTMLInputElement;
+        const roomField = document.getElementById('roomField') as HTMLInputElement;
+        if (usernameField && roomField) {
+          usernameField.value = this.loginUsername || '';
+          roomField.value = this.loginRoom || '';
+        }
+        
+        alert('error: lost connection to the server');
+      }
+    }
   }
 };
