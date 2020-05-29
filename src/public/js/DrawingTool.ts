@@ -175,6 +175,59 @@ class DrawingTool {
   }
 };
 
+class Selector extends DrawingTool {
+  protected selectionBox: paper.Path.Rectangle | null = null;
+
+  public constructor(id?: string) {
+    super('Selector', id || 'SELECTOR');
+  }
+
+  public clone(id?: string): Selector {
+    let newClone = new Selector(id || this.id);
+    return newClone;
+  }
+
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    paper.project.view.onMouseDown = (event: paper.MouseEvent) => {
+      log(paper.project.selectedItems);
+      if (paper.project.selectedItems.length > 0) {
+        paper.project.deselectAll();
+      }
+    };
+
+    if (!this.selectionBox) {
+      this.selectionBox = new paper.Path.Rectangle(
+        new paper.Point(event.point),
+        new paper.Size(0,0)
+      );
+      this.selectionBox.fillColor = new paper.Color('#e9e9ff77');
+      this.selectionBox.selected = true;
+    }
+    switch (event.action) {
+      case 'begin':
+        break;
+      case 'move':
+        let rect = this.selectionBox;
+        rect.segments[0].point = rect.segments[0].point.add(new paper.Point(0, event.delta.y));  // lower left point
+        //rect.segments[1].point = rect.segments[1].point.add(...); // upper left point
+        rect.segments[2].point = rect.segments[2].point.add(new paper.Point(event.delta.x, 0));  // upper right point
+        rect.segments[3].point = rect.segments[3].point.add(new paper.Point(event.delta.x, event.delta.y));  // lower right point
+
+        for (let item of paper.project.getItems({})) {
+          if (item.intersects(this.selectionBox)) {
+            item.selected = true;
+          }
+        }
+        break;
+      case 'end':
+        this.selectionBox.remove();
+        this.selectionBox = null;
+      break;
+    }
+    return {success: true, broadcast: false};
+  };
+}
+
 class Eraser extends DrawingTool {
 
   protected eraserPointer: paper.Path.Circle | null = null;
@@ -418,4 +471,4 @@ class WeirdPen extends DrawingTool {
   }
 };
 
-export { DrawingTool, Pen, FountainPen, WeirdPen, Eraser, LaserPointer };
+export { DrawingTool, Pen, FountainPen, WeirdPen, Eraser, LaserPointer, Selector };
