@@ -1,11 +1,11 @@
 # lcd-board
-Collaborative Whiteboarding Web App.
+A simple **Collaborative Whiteboarding Web App**.
 
-This is a single page collabrative whiteboarding webapp. It supports for multiple rooms, thus a separate whiteboard for each room, and allows for multiple users to concurrently connect and draw in a room at any given point in time.
+This web app operates on the idea of rooms, where each room has a unique whiteboard. It allows multiple users to concurrently connect and draw in a room at any given point in time.
 
 As of now, room whiteboards are only persistent for as long as at least one user is connected to the room. If no one's connected to a room with a non-empty whiteboard, it'll be automatically discarded after 60 seconds.
 
-The web app supports picking colors and sizes, and has quite a bit of drawing tools. Following is a list of them:
+The web app has quite a bit of drawing tools to choose from, and you can pick the color and size on supported tools. Following is a list of them:
 - Pen
     - Standard pen for all your needs.
     - Supports pressure sensitivity, e.g. via
