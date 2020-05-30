@@ -354,10 +354,59 @@ class Eraser extends DrawingTool {
 
 class Pen extends DrawingTool {
   public constructor(id?: string) {
-    super("Pen", id || "PEN", "&#xf305;");
+    super("Pen", id || "PEN", "&#xf304;");
   }
   public clone(id?: string): Pen {
     let newClone = new Pen(id || this.id);
+    newClone.size = this.size;
+    return newClone;
+  }
+  protected shouldAutoAdjustSizeToFactor(): boolean {
+    return true;
+  }
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    let color = new paper.Color(event.color);
+    let size = event.adjustedSize || event.size;
+
+    // create new path only at the start of a stroke
+    if (event.action == 'begin' || !this.path) {
+      this.path = new paper.Path();
+      this.path.strokeCap = 'round';
+    }
+
+    // apply settings
+    this.path.strokeColor = color;
+    this.path.strokeWidth = size;
+
+    // connect it with the previous stroke by adding starting point at previous stroke.
+    if (this.previousDrawEvent) {
+      this.path.add(new paper.Point(this.previousDrawEvent.point));
+    }
+
+    // add a new point for the current location
+    this.path.add(new paper.Point(event.point));
+    log({verbose: true}, `Segment count: ${this.path.segments.length} (intermediate)`);
+
+    // cleanup once things end
+    if (event.action == "end") {
+      let orig = this.path.segments.length;
+      this.path.simplify();
+      let fina = this.path.segments.length;
+      let per = (orig-fina) / orig * 100.0;
+      log({verbose: true}, `Segment count: ${orig} -> ${fina} (${per.toFixed(2)}% reduction)`);
+      this.path = null;
+    }
+
+    return {success: true, broadcast: true};
+  }
+}
+
+class DynamicPen extends DrawingTool {
+  public constructor(id?: string) {
+    super("Dynamic Pen", id || "D_PEN", "&#xf305;");
+  }
+  public clone(id?: string): DynamicPen {
+    let newClone = new DynamicPen(id || this.id);
     newClone.size = this.size;
     return newClone;
   }
@@ -545,4 +594,4 @@ class DrunkPen extends DrawingTool {
   }
 };
 
-export { DrawingTool, Pen, FountainPen, DrunkPen, Eraser, LaserPointer, Selector };
+export { DrawingTool, Pen, DynamicPen, FountainPen, DrunkPen, Eraser, LaserPointer, Selector };
