@@ -159,6 +159,8 @@ export class UI {
   public configurePickers() {
     if (!this.drawingCanvas) return;
 
+    let prevActiveTool = this.drawingCanvas.getActiveTool();
+
     // Tool Picker
     const toolPickerContainer = this.toolPickerContainer;
     if (toolPickerContainer) {
@@ -176,6 +178,9 @@ export class UI {
           button.classList.add('selectedOption');
 
         button.onclick = () => {
+          if (this.drawingCanvas?.getActiveTool() == tool) return;
+          prevActiveTool = this.drawingCanvas?.getActiveTool() || prevActiveTool;
+
           this.drawingCanvas?.setActiveTool(tool);
 
           let allOptions = Array.from(toolPickerContainer.getElementsByClassName('toolOption'));
@@ -195,7 +200,7 @@ export class UI {
     const colorPickerContainer = this.colorPickerContainer;
     if (colorPickerContainer) {
       colorPickerContainer.innerHTML = '';
-      let activeColor = this.drawingCanvas.getActiveColor(); 
+      let activeColor = this.drawingCanvas.getActiveColor();
 
       for (let color of this.drawingCanvas.getColors()) {
         const button = document.createElement("button");
@@ -214,6 +219,10 @@ export class UI {
             option.classList.remove('selectedOption');
           };
           button.classList.add('selectedOption');
+
+          if (this.drawingCanvas?.getActiveTool() instanceof Eraser) {
+            this.drawingCanvas?.setActiveTool(prevActiveTool);
+          }
 
           this.updateToolStatus();
         }
@@ -234,6 +243,10 @@ export class UI {
           colorPickerButton.classList.add('selectedOption');
           colorPickerButton.style.backgroundColor = result;
           cachedColor = result;
+
+          if (this.drawingCanvas?.getActiveTool() instanceof Eraser) {
+            this.drawingCanvas?.setActiveTool(prevActiveTool);
+          }
 
           this.updateToolStatus();
         }
