@@ -20,7 +20,7 @@ The web app has quite a bit of drawing tools to choose from, and you can pick th
         - Allows for natural-looking ink.
 - Eraser
     - Mistakes can be corrected easily.
-    - Note: Performs ovector erasing, not pixel erasing.
+    - Note: Performs vector erasing, not pixel erasing.
 - Laser Pointer
     - Just like using a real life laser pointer.
     - Especially useful for collabration.
