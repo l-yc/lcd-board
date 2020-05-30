@@ -326,6 +326,7 @@ class Eraser extends DrawingTool {
         break;
       case 'move':
         this.eraserPointer.position = new paper.Point(point);
+        this.eraserPointer.sendToBack();
         break;
       case 'end':
         this.eraserPointer.remove();
@@ -340,20 +341,22 @@ class Eraser extends DrawingTool {
       if (result.item && result.item instanceof paper.Path &&
           this.eraserPointer && result.item != this.eraserPointer) {
 
-        let path = result.item as paper.Path;
+        let oldPath = result.item as paper.Path;
 
         // we create a new path by subtracting the eraser pointer and inserting it into view
-        let newPath = path.subtract(this.eraserPointer, {insert: true, trace: false});
-
-        // once we're done we can remove the old path
-        path.remove();
+        let newPath = oldPath.subtract(this.eraserPointer, {insert: false, trace: false});
 
         if ((newPath as paper.Path).segments &&
             (newPath as paper.Path).segments.length == 0) {
 
-          //if the new path is useless we should remove it as well
-          newPath.remove();
+          // new path is useless so don't bother
+        } else {
+          // insert directly above old path
+          newPath.insertAbove(oldPath);
         }
+
+        // once we're done we can remove the old path
+        oldPath.remove();
 
         //update the flag
         removedStuff = true;
