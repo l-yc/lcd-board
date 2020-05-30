@@ -1,5 +1,12 @@
-# lcd-board
-A simple **Collaborative Whiteboarding Web App**.
+<div align="center">
+  <h1>lcd-board</h1>
+  <img src="logo.svg" alt="lcd-board logo" height="128">
+  <p>
+    A <strong>Collaborative Whiteboarding</strong> Web App
+  </p>
+</div>
+
+<hr>
 
 This web app operates on the idea of rooms, where each room has a unique whiteboard. It allows multiple users to concurrently connect and draw in a room at any given point in time.
 
