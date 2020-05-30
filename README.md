@@ -130,33 +130,41 @@ A `DrawingTool` is simply a dummy implementation of a fixed-width pen. Its size 
 
 A `DrawEvent` is an interface which forms the basis of all event packets regarding any action on the drawing canvas.
 
-You must to override the `clone` method so as the tool can be cloned for drawing by each separate user.
+You must to override the `clone()` method so as the tool can be cloned for drawing by each separate user.
 
 You should only need to override the following methods to configure your tool's handling from system events all the way to drawing a stroke:
-`handleMouseEventAsDrawEvent(_:)` - handles conversion from a paper.js MouseEvent to a `DrawEvent`.
-`handleKeyEventAsDrawEvent(_:)` - handles conversion from a paper.js KeyEvent to a `DrawEvent`.
-`processDrawEvent(_:)` - handles translating a `DrawEvent` to graphics on the canvas (or anything else).
+
+- `handleMouseEventAsDrawEvent(_:)`
+    - handles conversion from a paper.js MouseEvent to a `DrawEvent`.
+- `handleKeyEventAsDrawEvent(_:)`
+    - handles conversion from a paper.js KeyEvent to a `DrawEvent`.
+- `processDrawEvent(_:)`
+    - handles translating a `DrawEvent` to graphics on the canvas (or anything else).
 
 Add them to the list of exported tools in `DrawingTool.ts`, and remember to import them and add to the list of tools in `index.ts`.
 
 You're done! Remember to rebuild the project, then try it out in your browser.
 
 You may find the following parameters useful to access:
-`previousDrawEvent` - contains the previous draw event for a single stroke, if there is one.
+- `previousDrawEvent`
+    - contains the previous draw event for a single stroke, if there is one.
 
 You may want to modify the following parameters when drawing:
-`sizeAdjustmentFactor` - adjusts the size by said factor before rendering and saves it to `drawEvent.adjustedSize`.
-`pressureSensitive` - configures whether pressure modifies the `sizeAdjustmentFactor` property.
+- `sizeAdjustmentFactor`
+    - adjusts the size by said factor before rendering and saves it to `drawEvent.adjustedSize`.
+- `pressureSensitive`
+    - configures whether pressure modifies the `sizeAdjustmentFactor` property.
 
-Other variables that can be overriden or have their default values changed depending on your implementation:
-`minSize`
-`size`
-`maxSize`
-`setSize(_:)`
-`getSize()`
-`getColor()`
+Other variables and methods that can be overriden or have their default values changed depending on your implementation:
+- `minSize`
+- `size`
+- `maxSize`
+- `setSize(_:)`
+- `getSize()`
+- `getColor()`
 
 ## TODOs
+
 - Add infinite canvas support
 - Rewrite implementation to uniquely tie each path element to a UUID
 - Fix Weighted Pen tool
@@ -165,8 +173,8 @@ Other variables that can be overriden or have their default values changed depen
 
 ## Contributors
 
-Li Yue Chen ([@l-yc](https://github.com/l-yc))
-Lim Wern Jie ([@wernjie](https://github.com/wernjie))
+- Li Yue Chen ([@l-yc](https://github.com/l-yc))
+- Lim Wern Jie ([@wernjie](https://github.com/wernjie))
 
 
 
