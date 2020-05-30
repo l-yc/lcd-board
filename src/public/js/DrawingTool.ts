@@ -56,11 +56,11 @@ class DrawingTool {
   }
 
   public setSize(size: number) {
-    if (this.maxSize && size >= this.maxSize) 
+    if (this.maxSize && size >= this.maxSize)
       this.size = this.maxSize;
     else if (this.minSize && size <= this.minSize)
       this.size = this.minSize;
-    else 
+    else
       this.size = size;
   }
   public getSize(): number {
@@ -96,10 +96,6 @@ class DrawingTool {
     return {
       action: action,
       timeStamp: event.timeStamp,
-      delta: {
-        x: event.delta.x,
-        y: event.delta.y
-      },
       point: {
         x: event.point.x,
         y: event.point.y,
@@ -221,7 +217,6 @@ class Selector extends DrawingTool {
     super('Selector', id || 'SELECTOR', '&#xf247;');
 
     paper.project.view.onMouseDown = (event: paper.MouseEvent) => {
-      log(paper.project.selectedItems);
       if (paper.project.selectedItems.length > 0) {
         paper.project.deselectAll();
       }
@@ -242,6 +237,7 @@ class Selector extends DrawingTool {
       case 'keydown':
         switch (event.key) {
           case 'delete':
+          case 'backspace':
             alert('error: not implemented');
             return null;
             for (let item of paper.project.selectedItems) {
@@ -269,10 +265,11 @@ class Selector extends DrawingTool {
         break;
       case 'move':
         let rect = this.selectionBox;
-        rect.segments[0].point = rect.segments[0].point.add(new paper.Point(0, event.delta.y));  // lower left point
-        //rect.segments[1].point = rect.segments[1].point.add(...); // upper left point
-        rect.segments[2].point = rect.segments[2].point.add(new paper.Point(event.delta.x, 0));  // upper right point
-        rect.segments[3].point = rect.segments[3].point.add(new paper.Point(event.delta.x, event.delta.y));  // lower right point
+
+        rect.segments[0].point.y = event.point.y;              // lower left point
+        //rect.segments[1].point // upper left point
+        rect.segments[2].point.x = event.point.x;              // upper right point
+        rect.segments[3].point = new paper.Point(event.point); // lower right point
 
         for (let item of paper.project.getItems({})) {
           if (item.intersects(this.selectionBox)) {
@@ -291,9 +288,9 @@ class Selector extends DrawingTool {
 
 class Eraser extends DrawingTool {
 
-  protected eraserPointer: paper.Path.Circle | null = null;
-  
-  readonly minSize = 30;
+  protected eraserPointer: paper.Path | null = null;
+
+  readonly minSize = 10;
   protected size = 30;
   readonly maxSize = 1000;
 
@@ -305,48 +302,62 @@ class Eraser extends DrawingTool {
     newClone.size = this.size;
     return newClone;
   }
-  
+
   public getColor(): string {
     return 'gray'; //dummy color
   }
 
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
-    let point = event.point; 
+    let point = event.point;
     let size = (event.adjustedSize || event.size)/2;
 
-    if (!event.originUserId) { 
-      //only display eraser indicator locally
-      if (!this.eraserPointer) {
-        this.eraserPointer = new paper.Path.Circle({
-          center: point,
-          radius: size
-        });
-        this.eraserPointer.strokeWidth = 1;   
-        this.eraserPointer.strokeColor = new paper.Color('#aaaaaa');
-        this.eraserPointer.fillColor = new paper.Color('#ffffff');
-      }
-      switch (event.action) {
-        case 'begin':
-          break;
-        case 'move':
-          this.eraserPointer.translate(new paper.Point(event.delta));
+    if (!this.eraserPointer) {
+      this.eraserPointer = new paper.Path.Circle({
+        center: point,
+        radius: size
+      });
+      let nonLocal = !!event.originUserId;
+      this.eraserPointer.strokeWidth = 1;
+      this.eraserPointer.strokeColor = nonLocal ? new paper.Color('#ffffff01') : new paper.Color('#aaaaaa');
+      this.eraserPointer.fillColor   = nonLocal ? new paper.Color('#ffffff01') : new paper.Color('#ffffff');
+    }
+    switch (event.action) {
+      case 'begin':
         break;
-        case 'end':
-          this.eraserPointer.remove();
+      case 'move':
+        this.eraserPointer.position = new paper.Point(point);
+        break;
+      case 'end':
+        this.eraserPointer.remove();
         this.eraserPointer = null;
         return {success: true, broadcast: true};
-        break;
-      }
     }
 
     let hitTestResult = paper.project.hitTestAll(new paper.Point(point), {fill: true, stroke: true, segments: true, tolerance: size});
     let removedStuff = false;
 
     for (let result of hitTestResult) {
-      if (result.item && result.item != this.eraserPointer) {
-        result.item.remove();
+      if (result.item && result.item instanceof paper.Path &&
+          this.eraserPointer && result.item != this.eraserPointer) {
+
+        let path = result.item as paper.Path;
+
+        // we create a new path by subtracting the eraser pointer and inserting it into view
+        let newPath = path.subtract(this.eraserPointer, {insert: true, trace: false});
+
+        // once we're done we can remove the old path
+        path.remove();
+
+        if ((newPath as paper.Path).segments &&
+            (newPath as paper.Path).segments.length == 0) {
+
+          //if the new path is useless we should remove it as well
+          newPath.remove();
+        }
+
+        //update the flag
         removedStuff = true;
-      } 
+      }
     }
     return {success: true, broadcast: event.action != 'move' || removedStuff};
   }
@@ -477,7 +488,7 @@ class LaserPointer extends DrawingTool {
       case 'begin':
         break;
       case 'move':
-        this.pointer.translate(new paper.Point(event.delta));
+        this.pointer.position = new paper.Point(event.point);
         break;
       case 'end':
         this.pointer.remove();

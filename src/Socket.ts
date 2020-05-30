@@ -20,10 +20,6 @@ interface DrawEvent {
   originUserId?: string,
   action: DrawEventAction,
   timeStamp: number,
-  delta: {
-    x: number,
-    y: number,
-  }
   point: {
     x: number,
     y: number,

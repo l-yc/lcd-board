@@ -3,6 +3,8 @@ import { RoomInfo } from '../../Socket';
 import { DrawingCanvas } from './DrawingCanvas';
 import { DrawingMember } from './DrawingMember';
 
+import { DrawingTool, Eraser } from './DrawingTool';
+
 export class UI {
 
   readonly drawingCanvas: DrawingCanvas;
@@ -75,6 +77,9 @@ export class UI {
       let minSize = activeTool.minSize || 2;
       let size = activeTool.getSize();
       let maxSize = Math.min(activeTool.maxSize || 50, 50) + minSize;
+      if (activeTool instanceof Eraser) {
+        maxSize = 150;
+      }
       sizeSlider.min   = '' + minSize;
       sizeSlider.max   = '' + maxSize;
       sizeSlider.value = '' + size; 
