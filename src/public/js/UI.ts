@@ -55,12 +55,12 @@ export class UI {
   public updateConnectionStatus(status: boolean) {
     if (!this.membersStatus) return;
     if (status) {
-      this.setStatusColor(this.membersStatus, '#0d0'); 
+      this.setStatusColor(this.membersStatus, '#0d0');
       if (this.membersStatus.innerHTML.indexOf('Disconnected')) {
         this.setStatusText(this.membersStatus, 'la-user', 'Connected');
       }
     } else {
-      this.setStatusColor(this.membersStatus, '#f00'); 
+      this.setStatusColor(this.membersStatus, '#f00');
       this.setStatusText(this.membersStatus, 'la-user-alt-slash', 'Disconnected');
     }
   }
@@ -82,7 +82,7 @@ export class UI {
       }
       sizeSlider.min   = '' + minSize;
       sizeSlider.max   = '' + maxSize;
-      sizeSlider.value = '' + size; 
+      sizeSlider.value = '' + size;
     }
   }
 
@@ -127,12 +127,12 @@ export class UI {
     let elements = Array.from(this.topBar.children).slice(1);
     for (let ele of elements) {
       let htmlEle = ele as HTMLElement;
-      htmlEle.style.height = visible ? '44px' : '0'; 
-      htmlEle.style.transform = visible ? 'none' : 'translateY(-44px)', 
+      htmlEle.style.height = visible ? '44px' : '0';
+      htmlEle.style.transform = visible ? 'none' : 'translateY(-44px)';
       htmlEle.style.opacity = visible ? '1' : '0';
       htmlEle.style.pointerEvents = visible ? 'auto' : 'none';
 
-      if (animated !== undefined && animated === false) {       
+      if (animated !== undefined && animated === false) {
         htmlEle.style.display = 'none';
         setTimeout(() => {
           htmlEle.style.display = 'inline-block' ;
@@ -172,7 +172,7 @@ export class UI {
         button.innerHTML = tool.icon || tool.name;
         button.classList.add('las', 'toolOption');
 
-        if (tool == activeTool) 
+        if (tool == activeTool)
           button.classList.add('selectedOption');
 
         button.onclick = () => {
@@ -214,7 +214,7 @@ export class UI {
             option.classList.remove('selectedOption');
           };
           button.classList.add('selectedOption');
-          
+
           this.updateToolStatus();
         }
         colorPickerContainer.appendChild(button);
@@ -283,9 +283,19 @@ export class UI {
         }, 500);
       }
     });
+
+    const usernameField = document.getElementById('usernameField') as HTMLInputElement;
+    const roomField = document.getElementById('roomField') as HTMLInputElement;
+
+    usernameField.addEventListener('keypress', (e) => {
+      if (e.which == 13) {
+        e.preventDefault()
+        roomField.focus();
+      }
+    });
   }
 
-  public performLogout() {
+  public performLogout(options: {userInitiated?: boolean}) {
     const loginOverlay = document.getElementById('login-overlay');
     if (loginOverlay) {
       const isAlreadyLoggedOut = loginOverlay.style.opacity != '0';
@@ -300,8 +310,10 @@ export class UI {
           usernameField.value = this.loginUsername || '';
           roomField.value = this.loginRoom || '';
         }
-        
-        alert('error: lost connection to the server');
+
+        if (options && !options.userInitiated) {
+            alert('error: lost connection to the server');
+        }
       }
     }
   }
