@@ -366,7 +366,7 @@ class Eraser extends DrawingTool {
     return 'gray'; //dummy color
   }
 
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+  protected processBoardEvent(event: BoardEvent): BoardEventProcessingResult {
     if (!isDrawEvent(event)) return { success: true, broadcast: false }; // ignore edit events
     let point = event.point;
     let size = (event.adjustedSize || event.size)/2;
