@@ -29,7 +29,7 @@ export class SocketServer {
     this.socket.on('disconnect', () => {
       log('disconnected :<');
       ui?.updateConnectionStatus(false);
-      ui?.performLogout();
+      ui?.performLogout({userInitiated: false});
     });
 
     this.socket.on('room whiteboard', (whiteboard: BoardEvent[]) => { // after joining

@@ -3,6 +3,8 @@ import { RoomInfo } from '../../Socket';
 import { DrawingCanvas } from './DrawingCanvas';
 import { DrawingMember } from './DrawingMember';
 
+import { DrawingTool, Eraser } from './DrawingTool';
+
 export class UI {
 
   readonly drawingCanvas: DrawingCanvas;
@@ -53,12 +55,12 @@ export class UI {
   public updateConnectionStatus(status: boolean) {
     if (!this.membersStatus) return;
     if (status) {
-      this.setStatusColor(this.membersStatus, '#0d0'); 
+      this.setStatusColor(this.membersStatus, '#0d0');
       if (this.membersStatus.innerHTML.indexOf('Disconnected')) {
         this.setStatusText(this.membersStatus, 'la-user', 'Connected');
       }
     } else {
-      this.setStatusColor(this.membersStatus, '#f00'); 
+      this.setStatusColor(this.membersStatus, '#f00');
       this.setStatusText(this.membersStatus, 'la-user-alt-slash', 'Disconnected');
     }
   }
@@ -75,9 +77,12 @@ export class UI {
       let minSize = activeTool.minSize || 2;
       let size = activeTool.getSize();
       let maxSize = Math.min(activeTool.maxSize || 50, 50) + minSize;
+      if (activeTool instanceof Eraser) {
+        maxSize = 150;
+      }
       sizeSlider.min   = '' + minSize;
       sizeSlider.max   = '' + maxSize;
-      sizeSlider.value = '' + size; 
+      sizeSlider.value = '' + size;
     }
   }
 
@@ -122,12 +127,12 @@ export class UI {
     let elements = Array.from(this.topBar.children).slice(1);
     for (let ele of elements) {
       let htmlEle = ele as HTMLElement;
-      htmlEle.style.height = visible ? '44px' : '0'; 
-      htmlEle.style.transform = visible ? 'none' : 'translateY(-44px)', 
+      htmlEle.style.height = visible ? '44px' : '0';
+      htmlEle.style.transform = visible ? 'none' : 'translateY(-44px)';
       htmlEle.style.opacity = visible ? '1' : '0';
       htmlEle.style.pointerEvents = visible ? 'auto' : 'none';
 
-      if (animated !== undefined && animated === false) {       
+      if (animated !== undefined && animated === false) {
         htmlEle.style.display = 'none';
         setTimeout(() => {
           htmlEle.style.display = 'inline-block' ;
@@ -154,6 +159,8 @@ export class UI {
   public configurePickers() {
     if (!this.drawingCanvas) return;
 
+    let prevActiveTool = this.drawingCanvas.getActiveTool();
+
     // Tool Picker
     const toolPickerContainer = this.toolPickerContainer;
     if (toolPickerContainer) {
@@ -167,10 +174,13 @@ export class UI {
         button.innerHTML = tool.icon || tool.name;
         button.classList.add('las', 'toolOption');
 
-        if (tool == activeTool) 
+        if (tool == activeTool)
           button.classList.add('selectedOption');
 
         button.onclick = () => {
+          if (this.drawingCanvas?.getActiveTool() == tool) return;
+          prevActiveTool = this.drawingCanvas?.getActiveTool() || prevActiveTool;
+
           this.drawingCanvas?.setActiveTool(tool);
 
           let allOptions = Array.from(toolPickerContainer.getElementsByClassName('toolOption'));
@@ -190,7 +200,7 @@ export class UI {
     const colorPickerContainer = this.colorPickerContainer;
     if (colorPickerContainer) {
       colorPickerContainer.innerHTML = '';
-      let activeColor = this.drawingCanvas.getActiveColor(); 
+      let activeColor = this.drawingCanvas.getActiveColor();
 
       for (let color of this.drawingCanvas.getColors()) {
         const button = document.createElement("button");
@@ -209,7 +219,11 @@ export class UI {
             option.classList.remove('selectedOption');
           };
           button.classList.add('selectedOption');
-          
+
+          if (this.drawingCanvas?.getActiveTool() instanceof Eraser) {
+            this.drawingCanvas?.setActiveTool(prevActiveTool);
+          }
+
           this.updateToolStatus();
         }
         colorPickerContainer.appendChild(button);
@@ -229,6 +243,10 @@ export class UI {
           colorPickerButton.classList.add('selectedOption');
           colorPickerButton.style.backgroundColor = result;
           cachedColor = result;
+
+          if (this.drawingCanvas?.getActiveTool() instanceof Eraser) {
+            this.drawingCanvas?.setActiveTool(prevActiveTool);
+          }
 
           this.updateToolStatus();
         }
@@ -278,9 +296,19 @@ export class UI {
         }, 500);
       }
     });
+
+    const usernameField = document.getElementById('usernameField') as HTMLInputElement;
+    const roomField = document.getElementById('roomField') as HTMLInputElement;
+
+    usernameField.addEventListener('keypress', (e) => {
+      if (e.which == 13) {
+        e.preventDefault()
+        roomField.focus();
+      }
+    });
   }
 
-  public performLogout() {
+  public performLogout(options: {userInitiated?: boolean}) {
     const loginOverlay = document.getElementById('login-overlay');
     if (loginOverlay) {
       const isAlreadyLoggedOut = loginOverlay.style.opacity != '0';
@@ -295,8 +323,10 @@ export class UI {
           usernameField.value = this.loginUsername || '';
           roomField.value = this.loginRoom || '';
         }
-        
-        alert('error: lost connection to the server');
+
+        if (options && !options.userInitiated) {
+            alert('error: lost connection to the server');
+        }
       }
     }
   }
