@@ -72,7 +72,7 @@ class DrawingTool {
     this.channel = null;
   }
 
-  public clone(id?: string): DrawingTool {
+  public clone(id: string): DrawingTool {
     let newClone = new DrawingTool(this.name, id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -256,7 +256,7 @@ class Selector extends DrawingTool {
     };
   }
 
-  public clone(id?: string): Selector {
+  public clone(id: string): Selector {
     let newClone = new Selector(id || this.id);
     return newClone;
   }
@@ -356,7 +356,7 @@ class Eraser extends DrawingTool {
   public constructor(id?: string) {
     super("Eraser", id || "THANOS_SNAP", '&#xf12d;');
   }
-  public clone(id?: string): Eraser {
+  public clone(id: string): Eraser {
     let newClone = new Eraser(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -430,7 +430,7 @@ class Pen extends DrawingTool {
   public constructor(id?: string) {
     super("Pen", id || "PEN", "&#xf304;");
   }
-  public clone(id?: string): Pen {
+  public clone(id: string): Pen {
     let newClone = new Pen(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -486,7 +486,7 @@ class DynamicPen extends DrawingTool {
   public constructor(id?: string) {
     super("Dynamic Pen", id || "D_PEN", "&#xf305;");
   }
-  public clone(id?: string): DynamicPen {
+  public clone(id: string): DynamicPen {
     let newClone = new DynamicPen(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -498,7 +498,7 @@ class FountainPen extends DrawingTool {
   public constructor(id?: string) {
     super("Fountain Pen", id || "F_PEN", "&#xf5ac;");
   }
-  public clone(id?: string): FountainPen {
+  public clone(id: string): FountainPen {
     let newClone = new FountainPen(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -530,7 +530,7 @@ class LaserPointer extends DrawingTool {
     super("Laser Pointer", id || "THE_SUN_IS_A_DEADLY_LASER", "&#xf185;");
   }
 
-  public clone(id?: string): LaserPointer {
+  public clone(id: string): LaserPointer {
     let newClone = new LaserPointer(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -577,7 +577,7 @@ class DrunkPen extends DrawingTool {
     super("Drunk Pen", id || "DONT_DRINK_AND_DRIVE", "&#xf0fc;");
   }
 
-  public clone(id?: string): DrunkPen {
+  public clone(id: string): DrunkPen {
     let newClone = new DrunkPen(id || this.id);
     newClone.size = this.size;
     return newClone;
