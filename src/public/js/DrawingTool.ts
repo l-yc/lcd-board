@@ -278,8 +278,12 @@ class Selector extends DrawingTool {
         switch (event.key) {
           case 'delete':
             action = 'delete';
-            alert('error: not implemented');
-            return null;
+            let groupIds: string[] = [];
+            for (let item of paper.project.selectedItems) {
+              let groupId = pathGroupMap.getGroup(item.id);
+              if (groupId) groupIds.push(groupId); // TODO throw an error otherwise
+            }
+            params = groupIds;
             break;
           default: return null
         }
@@ -329,6 +333,17 @@ class Selector extends DrawingTool {
       }
       return {success: true, broadcast: false};
     } else {
+      event = event as EditEvent; // BoardEvents are either DrawEvents or EditEvents
+      switch (event.action) {
+        case 'delete':
+          for (let groupId of (event.params as string[])) {
+            let pathRef = pathGroupMap.getPathRef(groupId);
+            pathRef?.ref.remove();
+          }
+          break;
+        default:
+          break;
+      }
       return {success: true, broadcast: true};
     }
   };
