@@ -4,7 +4,7 @@ import paper from 'paper';
 
 import { log } from './utils';
 
-import { DrawEvent } from '../../Socket';
+import { BoardEvent } from '../../Socket';
 import { UI } from './UI';
 import { DrawingTool } from './DrawingTool';
 
@@ -32,7 +32,7 @@ export class SocketServer {
       ui?.performLogout();
     });
 
-    this.socket.on('room whiteboard', (whiteboard: DrawEvent[]) => { // after joining
+    this.socket.on('room whiteboard', (whiteboard: BoardEvent[]) => { // after joining
       log('received room whiteboard:', whiteboard);
       let deGroups: { [group: string]: DrawingTool } = {};
       let cnt = 0;
@@ -55,11 +55,11 @@ export class SocketServer {
 
     });
 
-    this.socket.on('draw event', (drawEvent: DrawEvent) => {
-      log({verbose: true}, 'received draw event');
-      if (drawEvent.originUserId != this.getUserId()) {
-        if (drawEvent.originUserId) {
-          this.ui?.drawingCanvas?.getDrawingMember(drawEvent.originUserId)?.handle(drawEvent);
+    this.socket.on('board event', (boardEvent: BoardEvent) => {
+      log({verbose: true}, 'received board event');
+      if (boardEvent.originUserId != this.getUserId()) {
+        if (boardEvent.originUserId) {
+          this.ui?.drawingCanvas?.getDrawingMember(boardEvent.originUserId)?.handle(boardEvent);
         }
       }
     });
@@ -102,7 +102,12 @@ export class SocketServer {
     }
   }
 
-  sendDrawEvent(event: DrawEvent, pathId: string) {
+  getGroup(event: BoardEvent, pathId: string) {
+    let group: string = `${this.getUserId()}_${pathId}`; // globally unique id
+    return group;
+  }
+
+  sendBoardEvent(event: BoardEvent, pathId: string) {
     if (!this.room) return; // not initialised, FIXME throw an error
 
     let group: string = `${this.getUserId()}_${pathId}`; // globally unique id
@@ -110,8 +115,8 @@ export class SocketServer {
     event.group = group;
     event.originUserId = this.getUserId();
 
-    log({verbose: true}, 'sending draw event');
-    this.socket.emit('draw event', event);
+    log({verbose: true}, 'sending board event');
+    this.socket.emit('board event', event);
   }
 
   getUserId() {
