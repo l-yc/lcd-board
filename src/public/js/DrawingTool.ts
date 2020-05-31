@@ -149,6 +149,10 @@ class DrawingTool {
       canvas.addEventListener('pointerup', endEventHandler);
     }
   }
+  
+  protected getCurrentDrawGroup() {
+    return this.id + "_" + this.drawCount;
+  }
 
   protected previousDrawEvent: DrawEvent | null = null;
   public handle(event: DrawEvent) {
@@ -178,7 +182,7 @@ class DrawingTool {
 
     // broadcast draw event to others if required
     if (result.broadcast && this.channel && !event.originUserId) {
-      this.channel.sendDrawEvent(event, this.id + "_" + this.drawCount);
+      this.channel.sendDrawEvent(event, this.getCurrentDrawGroup());
     }
   }
 
@@ -352,7 +356,24 @@ class Eraser extends DrawingTool {
   }
 }
 
+class PathGroupMap {
+  protected pathToGroup: Map<number,string>;
+  protected groupToPath: Map<string,paper.Item>; // not the most memory efficient, but i can't find a findItemById function, so this will do
+  constructor() {
+    this.pathToGroup = new Map();
+    this.groupToPath = new Map();
+  }
+
+  getGroup(pathId: number): string | undefined { return this.pathToGroup?.get(pathId); }
+  getPath(groupId: string): paper.Item | undefined { return this.groupToPath?.get(groupId); }
+  insert(path: paper.Item, groupId: string): void {
+    this.pathToGroup.set(path.id, groupId);
+    this.groupToPath.set(groupId, path);
+  }
+}
+
 class Pen extends DrawingTool {
+  protected pathGroupMap = new PathGroupMap();
   public constructor(id?: string) {
     super("Pen", id || "PEN", "&#xf304;");
   }
@@ -372,6 +393,9 @@ class Pen extends DrawingTool {
     if (event.action == 'begin' || !this.path) {
       this.path = new paper.Path();
       this.path.strokeCap = 'round';
+
+      if (!event.group) event.group = this.getCurrentDrawGroup();
+      this.pathGroupMap.insert(this.path, event.group);
     }
 
     // apply settings
