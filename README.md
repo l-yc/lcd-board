@@ -135,18 +135,22 @@ You can easily add your own drawing tools simply by extending the `DrawingTool` 
 
 A `DrawingTool` is simply a dummy implementation of a fixed-width pen. Its size is configurable but color is determined based on the canvas active color by default.
 
-A `DrawEvent` is an interface which forms the basis of all event packets regarding any action on the drawing canvas.
+A `BoardEvent` is a type for all events that will result in changes to the canvas. `BoardEvent`s can be either `DrawEvent`s or `EditEvent`s.
 
-You must to override the `clone()` method so as the tool can be cloned for drawing by each separate user.
+A `DrawEvent` is an interface which forms the basis of all event packets regarding any action on the drawing canvas which results in the creation of new items.
+
+An `EditEvent` is an interface which forms the basis of all event packets regarding any action which manipulates existing items on the canvas.
+
+You must override the `clone()` method so as the tool can be cloned for drawing by each separate user.
 
 You should only need to override the following methods to configure your tool's handling from system events all the way to drawing a stroke:
 
-- `handleMouseEventAsDrawEvent(_:)`
-    - handles conversion from a paper.js MouseEvent to a `DrawEvent`.
-- `handleKeyEventAsDrawEvent(_:)`
-    - handles conversion from a paper.js KeyEvent to a `DrawEvent`.
-- `processDrawEvent(_:)`
-    - handles translating a `DrawEvent` to graphics on the canvas (or anything else).
+- `handleMouseEventAsBoardEvent(_:)`
+    - handles conversion from a paper.js MouseEvent to a `BoardEvent`.
+- `handleKeyEventAsBoardEvent(_:)`
+    - handles conversion from a paper.js KeyEvent to a `BoardEvent`.
+- `processBoardEvent(_:)`
+    - handles translating a `BoardEvent` to graphics on the canvas (or anything else).
 
 Add them to the list of exported tools in `DrawingTool.ts`, and remember to import them and add to the list of tools in `index.ts`.
 
@@ -162,6 +166,15 @@ You may want to modify the following parameters when drawing:
 - `pressureSensitive`
     - configures whether pressure modifies the `sizeAdjustmentFactor` property.
 
+If you are creating any new paths when processing a `BoardEvent`, do remember to register the path as follows:
+```typescript
+if (event.group) {
+    pathGroupMap.insert({ref:this.path}, event.group);
+} else if (this.channel) {
+    pathGroupMap.insert({ref:this.path}, this.channel.getGroup(event, this.getCurrentDrawGroup()));
+}
+```
+
 Other variables and methods that can be overriden or have their default values changed depending on your implementation:
 - `minSize`
 - `size`
@@ -173,9 +186,9 @@ Other variables and methods that can be overriden or have their default values c
 ## TODOs
 
 - Add infinite canvas support
-- Rewrite implementation to uniquely tie each path element to a UUID
+- Improve implementation to uniquely tie each path element to a UUID
 - Fix Weighted Pen tool
-- Fix Selection tool
+- Fix all tools except Pen to work with Selection tool
 - Improve efficiency on large canvases
 
 ## Contributors
