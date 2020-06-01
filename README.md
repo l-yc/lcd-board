@@ -14,6 +14,11 @@ As of now, room whiteboards are only persistent for as long as at least one user
 
 The web app has quite a bit of drawing tools to choose from, and you can pick the color and size on supported tools. Following is a list of them:
 - Pen
+    - Basic pen.
+    - Auto-smoothes strokes.
+    - Optimised for memory efficiency.
+        - Best for usage on large drawings.
+- Dynamic Pen
     - Standard pen for all your needs.
     - Supports pressure sensitivity, e.g. via
         - Wacom tablet and stylus (requires Firefox, Chrome)

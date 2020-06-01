@@ -1,6 +1,6 @@
 import { log } from './utils';
 
-import { User, DrawEvent } from '../../Socket';
+import { User, BoardEvent } from '../../Socket';
 import { DrawingTool } from './DrawingTool';
 
 export class DrawingMember {
@@ -30,7 +30,7 @@ export class DrawingMember {
     return this.drawingTool;
   }
 
-  handle(event: DrawEvent) {
+  handle(event: BoardEvent) {
     if (event.originUserId == this.id)
       this.getDrawingTool(event.toolId).handle(event)
     else

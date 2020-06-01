@@ -7,7 +7,7 @@ interface User {
 
 interface Room {
   users: string[];
-  whiteboard: DrawEvent[];
+  whiteboard: BoardEvent[];
 };
 
 interface RoomInfo {
@@ -17,13 +17,10 @@ interface RoomInfo {
 type DrawEventAction = "begin" | "move" | "end";
 interface DrawEvent {
   group?: string,
+  pathId?: string,
   originUserId?: string,
   action: DrawEventAction,
   timeStamp: number,
-  delta: {
-    x: number,
-    y: number,
-  }
   point: {
     x: number,
     y: number,
@@ -34,7 +31,17 @@ interface DrawEvent {
   adjustedSize?: number,
   persistent: boolean
 };
-
+type EditEventAction = "move" | "delete";
+interface EditEvent {
+  group?: string,
+  originUserId?: string,
+  action: EditEventAction,
+  timeStamp: number,
+  params?: any, // i am sorry
+  toolId?: string,
+  persistent: boolean
+}
+type BoardEvent = DrawEvent | EditEvent;
 
 // wrapper around SocketIO.Socket
 class Socket {
@@ -55,7 +62,7 @@ class Socket {
     socket.on('register', this.onRegister.bind(this));
     socket.on('join', this.onJoin.bind(this));
     socket.on('leave', this.onLeave.bind(this));
-    socket.on('draw event', this.onDrawEvent.bind(this));
+    socket.on('board event', this.onBoardEvent.bind(this));
   }
 
   private onDisconnect(): void {
@@ -91,15 +98,15 @@ class Socket {
     }
   }
 
-  private onDrawEvent(event: DrawEvent): void {
+  private onBoardEvent(event: BoardEvent): void {
     console.log('received event %o', event);
     if (!this.room) {
       // user is not subscribed to any room, don't broadcast
       console.log('invalid event: the user ' + this.socket.id + ' is not subscribed to any room!');
       return;
     } 
-    this.socket.broadcast.to(this.room).emit('draw event', event);
-    if (event.persistent) this.server.recordDrawEvent(this.socket.id, event);
+    this.socket.broadcast.to(this.room).emit('board event', event);
+    if (event.persistent) this.server.recordBoardEvent(this.socket.id, event);
   }
 };
 
@@ -197,10 +204,10 @@ class SocketServer {
     }
   }
 
-  public recordDrawEvent(socketId: string, event: DrawEvent): void {
+  public recordBoardEvent(socketId: string, event: BoardEvent): void {
     let user: User | undefined = this.users.get(socketId);
     if (!user) {
-      console.log('unknown DrawEvent source: %s', socketId);
+      console.log('unknown BoardEvent source: %s', socketId);
       return;
     }
     if (!user.room) {
@@ -213,11 +220,11 @@ class SocketServer {
       return;
     }
 
-    console.log('recording draw event %o', event);
+    console.log('recording board event %o', event);
     room.whiteboard.push(event);
   }
 
-  public getRoomWhiteboard(roomId: string): DrawEvent[] { // not ideal, cannot handle erasing
+  public getRoomWhiteboard(roomId: string): BoardEvent[] { // not ideal, cannot handle erasing
     let room: Room | undefined = this.rooms.get(roomId);
     if (!room) {
       throw 'Bad room id ' + roomId;
@@ -227,4 +234,4 @@ class SocketServer {
 };
 
 export default SocketServer;
-export { SocketServer, User, Room, RoomInfo, DrawEvent, DrawEventAction };
+export { SocketServer, User, Room, RoomInfo, DrawEvent, DrawEventAction, EditEvent, EditEventAction, BoardEvent };
