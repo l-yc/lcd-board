@@ -24,7 +24,7 @@ type DrawEventAction = "add" | "delete" | "change";
 
 interface DrawData {
   id: string,
-  svg: any
+  json: any
 }
 interface DrawEvent {
   kind: "draw",

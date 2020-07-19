@@ -257,7 +257,7 @@ class DrawingTool {
       for (let path of this.previewPathLog) {
         let id = this.canvas.getIdForPaperId(path.id) || this.generateGUIDv4();
         this.canvas.setReferenceToIdForPaperItem(id, path);
-        data.push({id: id, svg: path.exportSVG({asString: true}) as string});
+        data.push({id: id, json: path.exportJSON({asString: true}) as string});
       }
       return data;
     }
@@ -275,7 +275,7 @@ class DrawingTool {
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (this.canvas) {
       for (let ele of event.data) {
-        this.canvas.drawSVGItem(ele.id, ele.svg);
+        this.canvas.drawJSONItem(ele.id, ele.json);
       }
     }
     return {success: true, broadcast: true}
@@ -366,8 +366,7 @@ class Selector extends DrawingTool {
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (event.action == "delete") {
       for (let drawData of event.data) {
-        this.canvas?.getPaperItem(drawData.id)?.remove();
-        this.canvas?.removeReferenceToId(drawData.id);
+        this.canvas?.removeItemAndReferenceToId(drawData.id);
       }
     }
     return {success: true, broadcast: true}
@@ -395,6 +394,7 @@ class Eraser extends DrawingTool {
     return 'gray'; //dummy color
   }
 
+  protected itemsToChange: DrawData[] = [];
   protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
     let point = event.point;
     let size = (event.adjustedSize || event.size)/2;
@@ -423,42 +423,53 @@ class Eraser extends DrawingTool {
     }
 
     let hitTestResult = paper.project.hitTestAll(new paper.Point(point), {fill: true, stroke: true, segments: true, tolerance: size});
-    let removedStuff = false;
 
     for (let result of hitTestResult) {
       if (result.item && this.canvas &&
-          result.item instanceof paper.Path && this.canvas.hasReferenceToId(result.item.id)) {
+          result.item instanceof paper.PathItem &&
+          this.canvas.hasReferenceToId(result.item.id)) {
 
-        let oldPath = result.item as paper.Path;
+        let oldPath = result.item as paper.PathItem;
         let oldId = this.canvas.getIdForPaperId(oldPath.id) as string;
-        this.canvas.removeReferenceToId(oldPath.id);
 
-        // we create a new path by subtracting the eraser pointer and inserting it into view
+        // we create a new path by subtracting the eraser pointer
         let newPath = oldPath.subtract(this.eraserPointer, {insert: false, trace: false});
 
-        if ((newPath as paper.Path).segments &&
-            (newPath as paper.Path).segments.length == 0) {
-
-          // new path is useless so don't bother
-        } else {
-          // insert directly above old path
-          newPath.insertAbove(oldPath);
-          this.canvas.setReferenceToIdForPaperItem(oldId, newPath);
-        }
-
-        // once we're done we can remove the old path
-        oldPath.remove();
-
-        //update the flag
-        removedStuff = true;
+        // we keep the packet for further use later
+        let drawDataPacket = {id: oldId, json: newPath.exportJSON({asString: true}) as string};
+        this.itemsToChange.push(drawDataPacket);
       }
     }
     return {
       success: true,
-      broadcast: event.action != 'move' || removedStuff,
-      makeDrawEvent: false
+      broadcast: false,
+      makeDrawEvent: this.itemsToChange.length > 0
     };
   }
+  protected createDrawEventFromPreviewActivity(): DrawEvent {
+    let drawEvent: DrawEvent = {
+      kind: "draw",
+      action: "change",
+      toolId: this.id,
+      data: this.itemsToChange
+    }
+    this.itemsToChange = [];
+    return drawEvent;
+  }
+
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    if (event.action == "change" && this.canvas) {
+      for (let d of event.data) {
+        //overrides old path item with new path item json
+        let item = this.canvas.drawJSONItem(d.id, d.json);
+        if (item.isEmpty()) {
+          this.canvas.removeItemAndReferenceToId(d.id);
+        }
+      }
+    }
+    return {success: true, broadcast: true}
+  }
+
 }
 
 class Pen extends DrawingTool {

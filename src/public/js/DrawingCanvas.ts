@@ -29,23 +29,29 @@ export class DrawingCanvas {
     if (this.drawingTools) this.drawingTools[0].activate();
   }
 
+  public clearWithAnimation(completion: () => void) {
+    this.htmlCanvas.style.opacity = '0';
+    setTimeout(() => {
+      this.clear();
+      this.htmlCanvas.style.opacity = '1';
+
+      setTimeout(() => {completion()}, 50);
+    },50);
+
+  }
   public clear() {
     paper.project.clear();
     this.paperIdToIdMap.clear();
     this.idToPaperIdMap.clear();
     this.idToPaperItemMap.clear();
   }
-  public drawJSONItem(id: string, json: string) {
-    let x = this.getPaperItem(id) || new paper.Path();
-    x.importJSON(json);
-    this.setReferenceToIdForPaperItem(id, x);
+  public drawJSONItem(id: string, json: string): paper.Item {
+    let newI = paper.project.activeLayer.importJSON(json);
+    this.replaceItemWithReferenceToId(id, newI);
+    return newI;
   }
-  public drawSVGItem(id: string, svg: string) {
-    console.log('svg');
-    console.log(svg);
-    let x = this.getPaperItem(id) || new paper.Path();
-    x.importSVG(svg);
-    this.setReferenceToIdForPaperItem(id, x);
+  public saveAsJSONData(): string {
+    return paper.project.activeLayer.exportJSON({asString: true});
   }
 
   public addTools(tools: DrawingTool[]) {
@@ -84,10 +90,33 @@ export class DrawingCanvas {
     }
   }
 
-  public setReferenceToIdForPaperItem(id: string, path: paper.Item) {
-    this.paperIdToIdMap.set(path.id, id);
-    this.idToPaperIdMap.set(id, path.id);
-    this.idToPaperItemMap.set(id, path);
+  public setReferenceToIdForPaperItem(id: string, item: paper.Item) {
+    item.name = id;
+    this.paperIdToIdMap.set(item.id, id);
+    this.idToPaperIdMap.set(id, item.id);
+    this.idToPaperItemMap.set(id, item);
+  }
+  public replaceItemWithReferenceToId(id: string | number, item: paper.Item) {
+    if (!this.hasReferenceToId(id)) {
+      if (typeof id != "number") {
+        item.name = id;
+        this.paperIdToIdMap.set(item.id, id);
+        this.idToPaperIdMap.set(id, item.id);
+        this.idToPaperItemMap.set(id, item);
+        return
+      }
+    } else {
+      if (typeof id == "number") {
+        id = this.paperIdToIdMap.get(id) as string;
+      }
+      let t = this.idToPaperItemMap.get(id);
+      if (t) {
+        t.name = '';
+        t.replaceWith(item);
+        this.paperIdToIdMap.delete(t.id);
+      }
+      item.name = id;
+    }
   }
   public hasReferenceToId(id: string | number): boolean {
     if (typeof id == "number") {
@@ -96,15 +125,19 @@ export class DrawingCanvas {
       return this.idToPaperIdMap.has(id);
     }
   }
-  public removeReferenceToId(id: string | number) {
+  public removeItemAndReferenceToId(id: string | number) {
     let targetId: string | number | undefined;
     if (typeof id == "string" && (targetId = this.idToPaperIdMap.get(id))) {
       this.paperIdToIdMap.delete(targetId);
       this.idToPaperIdMap.delete(id);
+      let item = this.idToPaperItemMap.get(id);
+      if (item) {item.name = ''; item.remove();}
       this.idToPaperItemMap.delete(id);
     } else if (typeof id == "number" && (targetId = this.paperIdToIdMap.get(id))) {
-      this.idToPaperIdMap.delete(targetId);
       this.paperIdToIdMap.delete(id);
+      this.idToPaperIdMap.delete(targetId);
+      let item = this.idToPaperItemMap.get(targetId);
+      if (item) {item.name = ''; item.remove();}
       this.idToPaperItemMap.delete(targetId);
     }
   }

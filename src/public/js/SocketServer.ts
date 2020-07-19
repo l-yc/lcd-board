@@ -36,14 +36,46 @@ export class SocketServer {
       log('received room whiteboard:', whiteboard);
       let deGroups: { [group: string]: DrawingTool } = {};
       let cnt = 0;
-      const currentUserMemberObj = this.ui?.drawingCanvas?.getDrawingMember(this.getUserId());
-      if (currentUserMemberObj) {
-        let canvas = ui?.drawingCanvas;
-        if (canvas) {
-          canvas.clear();
-          for (let id of whiteboard.idOrder) {
-            canvas.drawSVGItem(id, whiteboard.drawDataRef[id].svg);
-          }
+      const _ui = ui;
+      const _canvas = _ui ? _ui.drawingCanvas : undefined;
+      if (_ui && _canvas) {
+        const currentUserMemberObj = _canvas.getDrawingMember(this.getUserId());
+        if (currentUserMemberObj) {
+          _canvas.clearWithAnimation(() => {
+
+            //
+            // render in chunks for every 100 items.
+            // this will allow the websocket ample time to stay connected,
+            // and provide a visual preview of the rendering process.
+            //
+            let totalItems = whiteboard.idOrder.length;
+            let renderChunkSize = totalItems < 100 ? 10 : 100;
+            let renderCount = 0;
+
+            let asyncRender = (i: number) => {
+              let handler = () => {
+                if (i < totalItems) {
+                  const id = whiteboard.idOrder[i];
+                  const item = whiteboard.drawDataRef[id];
+                  if (item !== undefined) {
+                    _canvas.drawJSONItem(id, item.json);
+                    renderCount++;
+                  }
+                  i++;
+                  if (renderCount % renderChunkSize == 0) {
+                    renderCount++;
+                    asyncRender(i);
+                  } else {
+                    handler();
+                  }
+                } else {
+                  setTimeout(() => {_ui.hideLoginOverlay();}, 10);
+                }
+              }
+              setTimeout(handler, 1);
+            }
+            asyncRender(0);
+          });
         }
       }
 

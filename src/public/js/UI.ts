@@ -271,6 +271,9 @@ export class UI {
   private loginRoom: string | null = null;
   public configureLoginForm() {
     const form = document.querySelector('#login-form') as HTMLFormElement;
+    const submit = document.querySelector('input[type=submit]') as HTMLInputElement;
+    const usernameField = document.getElementById('usernameField') as HTMLInputElement;
+    const roomField = document.getElementById('roomField') as HTMLInputElement;
 
     if (form) form.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -288,17 +291,10 @@ export class UI {
       this.drawingCanvas?.getSocketServer()?.register(uname);
       this.drawingCanvas?.getSocketServer()?.join(room);
 
-      const loginOverlay = document.getElementById('login-overlay');
-      if (loginOverlay) {
-        loginOverlay.style.opacity = '0';
-        setTimeout(function () {
-          loginOverlay.style.display = 'none';
-        }, 500);
-      }
-    });
+      submit.disabled = true;
+      submit.value = "Loading...";
 
-    const usernameField = document.getElementById('usernameField') as HTMLInputElement;
-    const roomField = document.getElementById('roomField') as HTMLInputElement;
+    });
 
     usernameField.addEventListener('keypress', (e) => {
       if (e.which == 13) {
@@ -306,6 +302,16 @@ export class UI {
         roomField.focus();
       }
     });
+  }
+
+  public hideLoginOverlay() {
+    const loginOverlay = document.getElementById('login-overlay');
+    if (loginOverlay) {
+      loginOverlay.style.opacity = '0';
+      setTimeout(function () {
+        loginOverlay.style.display = 'none';
+      }, 250);
+    }
   }
 
   public performLogout(options: {userInitiated?: boolean}) {
@@ -319,6 +325,8 @@ export class UI {
 
         const usernameField = document.getElementById('usernameField') as HTMLInputElement;
         const roomField = document.getElementById('roomField') as HTMLInputElement;
+        const submit = document.querySelector('input[type=submit]') as HTMLInputElement;
+
         if (usernameField && roomField) {
           usernameField.value = this.loginUsername || '';
           roomField.value = this.loginRoom || '';
@@ -327,6 +335,10 @@ export class UI {
         if (options && !options.userInitiated) {
             alert('error: lost connection to the server');
         }
+        usernameField.disabled = false;
+        roomField.disabled = false;
+        submit.disabled = false;
+        submit.value = "Login";
       }
     }
   }
