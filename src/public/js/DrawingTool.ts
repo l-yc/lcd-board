@@ -2,16 +2,22 @@ import paper from 'paper';
 
 import { log } from './utils';
 
-import { DrawEvent, DrawEventAction } from '../../Socket';
+import { DrawEvent, DrawPreviewEvent, DrawEventAction, DrawPreviewEventAction, DrawData } from '../../Socket';
 
 import { SocketServer } from './SocketServer';
 import { DrawingCanvas } from './DrawingCanvas';
 
-interface DrawEventProcessingResult {success: boolean, broadcast: boolean};
+interface DrawPreviewEventProcessingResult {
+    success: boolean,
+    broadcast: boolean,
+    makeDrawEvent: boolean,
+};
+interface DrawEventProcessingResult {
+    success: boolean,
+    broadcast: boolean,
+};
 class DrawingTool {
   protected tool: paper.Tool;
-  protected path: paper.Path | null;
-  protected drawCount = 0;
   readonly id: string;
 
   public canvas: DrawingCanvas | null = null;
@@ -45,11 +51,10 @@ class DrawingTool {
     this.name = name;
     this.id = id || (((1+Math.random())*0x10000)|0).toString(16).substring(1); //uses id or generates 8 character hex as id
     this.icon = icon || null;
-    this.path = null;
     this.channel = null;
   }
 
-  public clone(id?: string): DrawingTool {
+  public clone(id: string): DrawingTool {
     let newClone = new DrawingTool(this.name, id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -75,8 +80,8 @@ class DrawingTool {
 
   protected handleMouseEvent(event: any) {
     log({verbose: true}, 'received', event.type)
-    let drawEvent = this.processMouseEventAsDrawEvent(event);
-    if (drawEvent) this.handle(drawEvent);
+    let drawPreviewEvent = this.processMouseEventAsDrawPreviewEvent(event);
+    if (drawPreviewEvent) this.handle(drawPreviewEvent);
   }
 
   protected handleKeyEvent(event: any) {
@@ -85,8 +90,8 @@ class DrawingTool {
     if (drawEvent) this.handle(drawEvent);
   }
 
-  protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
-    let action: DrawEventAction;
+  protected processMouseEventAsDrawPreviewEvent(event: any): DrawPreviewEvent | null {
+    let action: DrawPreviewEventAction;
     switch (event.type) {
       case "mousedown": action = "begin"; break;
       case "mousedrag": action = "move"; break;
@@ -94,6 +99,7 @@ class DrawingTool {
       default: return null;
     }
     return {
+      kind: "preview",
       action: action,
       timeStamp: event.timeStamp,
       point: {
@@ -103,7 +109,6 @@ class DrawingTool {
       toolId: this.id,
       color: this.getColor(),
       size: this.getSize(),
-      persistent: true
     };
   }
 
@@ -146,63 +151,134 @@ class DrawingTool {
     }
   }
 
-  protected previousDrawEvent: DrawEvent | null = null;
-  public handle(event: DrawEvent) {
-    log({verbose: true}, 'handling', event);
-
-    if (!event.adjustedSize) {
-      if (this.shouldAutoAdjustSizeToFactor()) {
-        event.adjustedSize = Math.max(1,event.size + (Math.min(event.size, 30) * (this.sizeAdjustmentFactor - 1)));
-      } else {
-        event.adjustedSize = event.size;
+  protected previewPathLog: paper.Path[] = [];
+  protected drawPreviewEventLog: DrawPreviewEvent[] = [];
+  public handle(event: DrawEvent | DrawPreviewEvent) {
+    if (event.kind == "preview") {
+      log({verbose: true}, 'handling draw preview event', event);
+      if (!event.adjustedSize) {
+        if (this.shouldAutoAdjustSizeToFactor()) {
+          event.adjustedSize = Math.max(1,event.size + (Math.min(event.size, 30) * (this.sizeAdjustmentFactor - 1)));
+        } else {
+          event.adjustedSize = event.size;
+        }
       }
-    }
 
-    let result = this.processDrawEvent(event);
+      if (event.action == "begin") {
+        // we do some setup when a draw action starts
+        this.drawPreviewEventLog = [];
+        this.previewPathLog = [];
+      }
 
-    if (event.action == "begin") this.drawCount += 1;
+      let result = this.processDrawPreviewEvent(event);
 
-    if (event.action == "end") {
-      // we do some cleanup when a draw action ends
-      this.previousDrawEvent = null;
-      this.sizeAdjustmentFactor = 1;
+      if (event.action == "end") {
+        // we do some cleanup when a preview draw action ends
+        this.sizeAdjustmentFactor = 1;
+      }
 
-    } else {
-      // update cached previous draw event
-      this.previousDrawEvent = event;
-    }
+      // update cached previous preview event
+      this.drawPreviewEventLog.push(event);
 
-    // broadcast draw event to others if required
-    if (result.broadcast && this.channel && !event.originUserId) {
-      this.channel.sendDrawEvent(event, this.id + "_" + this.drawCount);
+      // broadcast preview event to others if required
+      if (this.channel && !event.originUserId) {
+        if (result.broadcast) {
+          this.channel.sendEvent(event);
+        }
+        if (result.makeDrawEvent) {
+          let drawEvent = this.createDrawEventFromPreviewActivity();
+          this.handle(drawEvent);
+        }
+      }
+    } else if (event.kind == "draw") {
+      log({verbose: true}, 'handling draw event', event);
+      let result = this.processDrawEvent(event);
+      if (result.broadcast && this.channel && !event.originUserId) {
+        this.channel.sendEvent(event);
+      }
     }
   }
 
 
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
+
+    // get properties
     let color = new paper.Color(event.color);
     let size = event.adjustedSize || event.size;
 
-    // create new path for each line segment between two draw events
-    this.path = new paper.Path();
-    this.path.strokeCap = 'round';
+    if (event.action != "begin") {
+      // create new path for each line segment between two draw events
+      let subpath = new paper.Path();
+      subpath.strokeCap = 'round';
 
-    // apply settings
-    this.path.strokeColor = color;
-    this.path.strokeWidth = size;
+      // apply settings
+      subpath.strokeColor = color;
+      subpath.strokeWidth = size;
 
-    // connect it with the previous stroke by adding starting point at previous stroke.
-    if (this.previousDrawEvent) {
-      this.path.add(new paper.Point(this.previousDrawEvent.point));
+      // connect it with the previous stroke by adding starting point at previous stroke.
+      let l = this.drawPreviewEventLog.length;
+      subpath.add(new paper.Point(this.drawPreviewEventLog[l-1].point));
+
+      // add a new point for the current location
+      subpath.add(new paper.Point(event.point));
+
+      // add to list of preview paths
+      this.previewPathLog.push(subpath);
+    } else {
+      //reset preview path log since this is new
+      this.previewPathLog = [];
+
+      // configure a single circular point since there're no previous draw preview events
+      let pointCircle = new paper.Path.Circle(new paper.Point(event.point), size/2);
+      pointCircle.fillColor = color;
+
+      // add to list of preview paths
+      this.previewPathLog.push(pointCircle);
     }
 
-    // add a new point for the current location
-    this.path.add(new paper.Point(event.point));
-
     // cleanup once things end
-    if (event.action == "end") this.path = null;
+    if (event.action == "end") {
+      for (let p of this.previewPathLog) {
+        p.remove();
+      }
+    }
 
-    return {success: true, broadcast: true};
+    return {success: true, broadcast: true, makeDrawEvent: event.action == "end"};
+  }
+
+  protected generateGUIDv4(): string {
+    let u = Date.now().toString(16) + Math.random().toString(16) + '0'.repeat(16);
+    let guid = [u.substr(0,8), u.substr(8,4), '4000-8' + u.substr(13,3), u.substr(16,12)].join('-');
+    return guid;
+  }
+  protected getAsDrawDataList(pathList: paper.Item[]): DrawData[] {
+    if (this.canvas) {
+      let data: DrawData[] = [];
+      for (let path of this.previewPathLog) {
+        let id = this.canvas.getIdForPaperId(path.id) || this.generateGUIDv4();
+        this.canvas.setReferenceToIdForPaperItem(id, path);
+        data.push({id: id, svg: path.exportSVG({asString: true}) as string});
+      }
+      return data;
+    }
+    return [];
+  }
+  protected createDrawEventFromPreviewActivity(): DrawEvent {
+    return {
+      kind: "draw",
+      action: "add",
+      toolId: this.id,
+      data: this.getAsDrawDataList(this.previewPathLog)
+    }
+  }
+
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    if (this.canvas) {
+      for (let ele of event.data) {
+        this.canvas.drawSVGItem(ele.id, ele.svg);
+      }
+    }
+    return {success: true, broadcast: true}
   }
 
   public activate() {
@@ -223,8 +299,8 @@ class Selector extends DrawingTool {
     };
   }
 
-  public clone(id?: string): Selector {
-    let newClone = new Selector(id || this.id);
+  public clone(id: string): Selector {
+    let newClone = new Selector(id);
     return newClone;
   }
 
@@ -238,11 +314,12 @@ class Selector extends DrawingTool {
         switch (event.key) {
           case 'delete':
           case 'backspace':
-            alert('error: not implemented');
-            return null;
-            for (let item of paper.project.selectedItems) {
-              item.remove(); // FIXME this is not broadcasted!!!
-            }
+          return {
+            kind: "draw",
+            action: "delete",
+            toolId: this.id,
+            data: this.getAsDrawDataList(paper.project.selectedItems)
+          }
         }
         break;
       case 'keyup':
@@ -251,7 +328,7 @@ class Selector extends DrawingTool {
     return null;
   }
 
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
     if (!this.selectionBox) {
       this.selectionBox = new paper.Path.Rectangle(
         new paper.Point(event.point),
@@ -272,7 +349,8 @@ class Selector extends DrawingTool {
         rect.segments[3].point = new paper.Point(event.point); // lower right point
 
         for (let item of paper.project.getItems({})) {
-          if (item.intersects(this.selectionBox)) {
+          if (item.intersects(this.selectionBox) &&
+              this.canvas && this.canvas.hasReferenceToId(item.id)) {
             item.selected = true;
           }
         }
@@ -282,8 +360,18 @@ class Selector extends DrawingTool {
         this.selectionBox = null;
       break;
     }
-    return {success: true, broadcast: false};
+    return {success: true, broadcast: false, makeDrawEvent: false};
   };
+
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    if (event.action == "delete") {
+      for (let drawData of event.data) {
+        this.canvas?.getPaperItem(drawData.id)?.remove();
+        this.canvas?.removeReferenceToId(drawData.id);
+      }
+    }
+    return {success: true, broadcast: true}
+  }
 }
 
 class Eraser extends DrawingTool {
@@ -297,8 +385,8 @@ class Eraser extends DrawingTool {
   public constructor(id?: string) {
     super("Eraser", id || "THANOS_SNAP", '&#xf12d;');
   }
-  public clone(id?: string): Eraser {
-    let newClone = new Eraser(id || this.id);
+  public clone(id: string): Eraser {
+    let newClone = new Eraser(id);
     newClone.size = this.size;
     return newClone;
   }
@@ -307,7 +395,7 @@ class Eraser extends DrawingTool {
     return 'gray'; //dummy color
   }
 
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
     let point = event.point;
     let size = (event.adjustedSize || event.size)/2;
 
@@ -331,17 +419,19 @@ class Eraser extends DrawingTool {
       case 'end':
         this.eraserPointer.remove();
         this.eraserPointer = null;
-        return {success: true, broadcast: true};
+        return {success: true, broadcast: true, makeDrawEvent: false};
     }
 
     let hitTestResult = paper.project.hitTestAll(new paper.Point(point), {fill: true, stroke: true, segments: true, tolerance: size});
     let removedStuff = false;
 
     for (let result of hitTestResult) {
-      if (result.item && result.item instanceof paper.Path &&
-          this.eraserPointer && result.item != this.eraserPointer) {
+      if (result.item && this.canvas &&
+          result.item instanceof paper.Path && this.canvas.hasReferenceToId(result.item.id)) {
 
         let oldPath = result.item as paper.Path;
+        let oldId = this.canvas.getIdForPaperId(oldPath.id) as string;
+        this.canvas.removeReferenceToId(oldPath.id);
 
         // we create a new path by subtracting the eraser pointer and inserting it into view
         let newPath = oldPath.subtract(this.eraserPointer, {insert: false, trace: false});
@@ -353,6 +443,7 @@ class Eraser extends DrawingTool {
         } else {
           // insert directly above old path
           newPath.insertAbove(oldPath);
+          this.canvas.setReferenceToIdForPaperItem(oldId, newPath);
         }
 
         // once we're done we can remove the old path
@@ -362,7 +453,11 @@ class Eraser extends DrawingTool {
         removedStuff = true;
       }
     }
-    return {success: true, broadcast: event.action != 'move' || removedStuff};
+    return {
+      success: true,
+      broadcast: event.action != 'move' || removedStuff,
+      makeDrawEvent: false
+    };
   }
 }
 
@@ -370,48 +465,58 @@ class Pen extends DrawingTool {
   public constructor(id?: string) {
     super("Pen", id || "PEN", "&#xf304;");
   }
-  public clone(id?: string): Pen {
-    let newClone = new Pen(id || this.id);
+  public clone(id: string): Pen {
+    let newClone = new Pen(id);
     newClone.size = this.size;
     return newClone;
   }
   protected shouldAutoAdjustSizeToFactor(): boolean {
     return true;
   }
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
+    let path = this.previewPathLog[0];
     let color = new paper.Color(event.color);
     let size = event.adjustedSize || event.size;
 
+    let prevEvent = this.drawPreviewEventLog[this.drawPreviewEventLog.length - 1];
+
     // create new path only at the start of a stroke
-    if (event.action == 'begin' || !this.path) {
-      this.path = new paper.Path();
-      this.path.strokeCap = 'round';
+    if (event.action == 'begin' || !path) {
+      path = new paper.Path();
+      path.strokeCap = 'round';
+      this.previewPathLog = [path];
     }
 
     // apply settings
-    this.path.strokeColor = color;
-    this.path.strokeWidth = size;
+    path.strokeColor = color;
+    path.strokeWidth = size;
 
     // connect it with the previous stroke by adding starting point at previous stroke.
-    if (this.previousDrawEvent) {
-      this.path.add(new paper.Point(this.previousDrawEvent.point));
+    if (prevEvent) {
+      path.add(new paper.Point(prevEvent.point));
     }
 
     // add a new point for the current location
-    this.path.add(new paper.Point(event.point));
-    log({verbose: true}, `Segment count: ${this.path.segments.length} (intermediate)`);
+    path.add(new paper.Point(event.point));
+    log({verbose: true}, `Segment count: ${path.segments.length} (intermediate)`);
 
     // cleanup once things end
     if (event.action == "end") {
-      let orig = this.path.segments.length;
-      this.path.simplify();
-      let fina = this.path.segments.length;
-      let per = (orig-fina) / orig * 100.0;
-      log({verbose: true}, `Segment count: ${orig} -> ${fina} (${per.toFixed(2)}% reduction)`);
-      this.path = null;
+      path.remove();
     }
 
-    return {success: true, broadcast: true};
+    return {success: true, broadcast: true, makeDrawEvent: event.action == "end"};
+  }
+
+  protected createDrawEventFromPreviewActivity(): DrawEvent {
+    let path = this.previewPathLog[0];
+    let orig = path.segments.length;
+    path.simplify();
+    let fina = path.segments.length;
+    let per = (orig-fina) / orig * 100.0;
+    log({verbose: true}, `Segment count: ${orig} -> ${fina} (${per.toFixed(2)}% reduction)`);
+
+    return super.createDrawEventFromPreviewActivity();
   }
 }
 
@@ -419,8 +524,8 @@ class DynamicPen extends DrawingTool {
   public constructor(id?: string) {
     super("Dynamic Pen", id || "D_PEN", "&#xf305;");
   }
-  public clone(id?: string): DynamicPen {
-    let newClone = new DynamicPen(id || this.id);
+  public clone(id: string): DynamicPen {
+    let newClone = new DynamicPen(id);
     newClone.size = this.size;
     return newClone;
   }
@@ -431,16 +536,16 @@ class FountainPen extends DrawingTool {
   public constructor(id?: string) {
     super("Fountain Pen", id || "F_PEN", "&#xf5ac;");
   }
-  public clone(id?: string): FountainPen {
-    let newClone = new FountainPen(id || this.id);
+  public clone(id: string): FountainPen {
+    let newClone = new FountainPen(id);
     newClone.size = this.size;
     return newClone;
   }
   protected shouldAutoAdjustSizeToFactor(): boolean {
     return true;
   }
-  protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
-    if (this.previousDrawEvent && event.type == "mousedrag") {
+  protected processMouseEventAsDrawPreviewEvent(event: any): DrawPreviewEvent | null {
+    if (this.drawPreviewEventLog.length > 0 && event.type == "mousedrag") {
       let distance = event.delta.length;
 
       let oldFactor = this.sizeAdjustmentFactor;
@@ -448,7 +553,7 @@ class FountainPen extends DrawingTool {
 
       this.sizeAdjustmentFactor = Math.max(0.5, oldFactor - 0.05, Math.min(newFactor, oldFactor + 0.05, 1.5)); //Allow maximum change of 0.05
     }
-    return super.processMouseEventAsDrawEvent(event);
+    return super.processMouseEventAsDrawPreviewEvent(event);
   }
 }
 
@@ -463,8 +568,8 @@ class LaserPointer extends DrawingTool {
     super("Laser Pointer", id || "THE_SUN_IS_A_DEADLY_LASER", "&#xf185;");
   }
 
-  public clone(id?: string): LaserPointer {
-    let newClone = new LaserPointer(id || this.id);
+  public clone(id: string): LaserPointer {
+    let newClone = new LaserPointer(id);
     newClone.size = this.size;
     return newClone;
   }
@@ -473,13 +578,7 @@ class LaserPointer extends DrawingTool {
     return 'red';
   }
 
-  protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
-    let result = super.processMouseEventAsDrawEvent(event);
-    if (result) result.persistent = false;
-    return result;
-  }
-
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
     if (!this.pointer) {
       this.pointer = new paper.Path.Circle({
         center: event.point,
@@ -498,114 +597,8 @@ class LaserPointer extends DrawingTool {
         this.pointer = null;
         break;
     }
-    return {success: true, broadcast: true};
+    return {success: true, broadcast: true, makeDrawEvent: false};
   }
 };
 
-// supposed to be a weighted pen but it's weird, hence the name
-class DrunkPen extends DrawingTool {
-
-  public constructor(id?: string) {
-    super("Drunk Pen", id || "DONT_DRINK_AND_DRIVE", "&#xf0fc;");
-  }
-
-  public clone(id?: string): DrunkPen {
-    let newClone = new DrunkPen(id || this.id);
-    newClone.size = this.size;
-    return newClone;
-  }
-
-  protected momentum: { x: number, y: number } = { x: 0, y: 0 };
-  public handle(event: DrawEvent) {
-    log({verbose: true}, 'handling', event);
-
-    let eventOriginal = JSON.parse(JSON.stringify(event)); // backup a deep copy of the event to be saved
-
-    if (this.previousDrawEvent) {
-      // transform the event point first, using momentum
-      // idea: calculate displacement vector, find the sum of both vectors
-      //       and project the current displacement vector in the direction
-      //       of the resultant vector
-      let displacement = {
-        x: event.point.x - this.previousDrawEvent.point.x,
-        y: event.point.y - this.previousDrawEvent.point.y
-      }
-      let resultant = {
-        x: displacement.x + this.momentum.x,
-        y: displacement.y + this.momentum.y
-      }
-      let magnitude = Math.sqrt(resultant.x * resultant.x + resultant.y * resultant.y);
-      let norm = {
-        x: resultant.x / magnitude,
-        y: resultant.y / magnitude
-      }
-      let transformed = {
-        x: displacement.x * norm.x,
-        y: displacement.y * norm.y
-      }
-      log({verbose: true}, 'momentum', event.point, transformed);
-
-      // apply the transformation
-      event.point.x += transformed.x;
-      event.point.y += transformed.y;
-
-      // recalculate momentum
-      let dt = event.timeStamp - this.previousDrawEvent.timeStamp;
-      let velocity = {
-        x: displacement.x / dt,
-        y: displacement.y / dt
-      }
-      const mass = 10.0;
-      this.momentum = {
-        x: velocity.x * mass,
-        y: velocity.y * mass
-      }
-    }
-
-    if (event.action == "end") {
-      // we do some cleanup when a draw action ends
-      this.path = null;
-      this.previousDrawEvent = null;
-      this.sizeAdjustmentFactor = 1;
-      this.momentum = { x: 0, y: 0 };
-    } else {
-      // handle draw action
-      // process and handle all properties
-      let color = new paper.Color(event.color);
-      let size = event.size;
-
-      let firstEventCall = event.action == "begin";
-      let strokePropertiesChanged = this.path != null && (this.path.strokeWidth != size || this.path.strokeColor != color);
-
-      if (this.path == null || firstEventCall || strokePropertiesChanged) {
-        this.path = new paper.Path();
-        this.path.strokeCap = 'round';
-      }
-
-      // apply settings
-      this.path.strokeColor = color;
-      this.path.strokeWidth = size;
-
-      // increment internal paths drawn counter for each stroke
-      if (firstEventCall) this.drawCount += 1;
-
-      // if this stroke is just due to a property change rather than a new stroke, we connect it with the previous stroke.
-      if (strokePropertiesChanged && this.previousDrawEvent) {
-        this.path.add(new paper.Point(this.previousDrawEvent.point));
-      }
-
-      // we add a new point for the current location
-      this.path.add(new paper.Point(event.point));
-
-      // update previousDrawEvent to use the raw current event
-      this.previousDrawEvent = eventOriginal;
-    }
-
-    // broadcast draw event to others if required
-    if (this.channel && !event.originUserId) {
-      this.channel.sendDrawEvent(event, this.id + "_" + this.drawCount);
-    }
-  }
-};
-
-export { DrawingTool, Pen, DynamicPen, FountainPen, DrunkPen, Eraser, LaserPointer, Selector };
+export { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector };

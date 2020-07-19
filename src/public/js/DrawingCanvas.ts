@@ -13,8 +13,12 @@ export class DrawingCanvas {
   private drawingColors: string[] = [];
   private activeColor: string = '#000000';
 
-  readonly htmlCanvas: HTMLElement
+  readonly htmlCanvas: HTMLElement;
   private socketServer: SocketServer | null = null;
+
+  private paperIdToIdMap: Map<number, string> = new Map();
+  private idToPaperIdMap: Map<string, number> = new Map();
+  private idToPaperItemMap: Map<string, paper.Item> = new Map();
 
   public constructor(canvas: HTMLElement, tools?: DrawingTool[], colors?: string[]) {
     this.htmlCanvas = canvas;
@@ -22,9 +26,27 @@ export class DrawingCanvas {
     if (tools) this.addTools(tools);
     if (colors) this.addColors(colors);
 
-    if (this.drawingTools) this.drawingTools[0].activate()
+    if (this.drawingTools) this.drawingTools[0].activate();
   }
 
+  public clear() {
+    paper.project.clear();
+    this.paperIdToIdMap.clear();
+    this.idToPaperIdMap.clear();
+    this.idToPaperItemMap.clear();
+  }
+  public drawJSONItem(id: string, json: string) {
+    let x = this.getPaperItem(id) || new paper.Path();
+    x.importJSON(json);
+    this.setReferenceToIdForPaperItem(id, x);
+  }
+  public drawSVGItem(id: string, svg: string) {
+    console.log('svg');
+    console.log(svg);
+    let x = this.getPaperItem(id) || new paper.Path();
+    x.importSVG(svg);
+    this.setReferenceToIdForPaperItem(id, x);
+  }
 
   public addTools(tools: DrawingTool[]) {
     for (let tool of tools) {
@@ -62,6 +84,45 @@ export class DrawingCanvas {
     }
   }
 
+  public setReferenceToIdForPaperItem(id: string, path: paper.Item) {
+    this.paperIdToIdMap.set(path.id, id);
+    this.idToPaperIdMap.set(id, path.id);
+    this.idToPaperItemMap.set(id, path);
+  }
+  public hasReferenceToId(id: string | number): boolean {
+    if (typeof id == "number") {
+      return this.paperIdToIdMap.has(id);
+    } else {
+      return this.idToPaperIdMap.has(id);
+    }
+  }
+  public removeReferenceToId(id: string | number) {
+    let targetId: string | number | undefined;
+    if (typeof id == "string" && (targetId = this.idToPaperIdMap.get(id))) {
+      this.paperIdToIdMap.delete(targetId);
+      this.idToPaperIdMap.delete(id);
+      this.idToPaperItemMap.delete(id);
+    } else if (typeof id == "number" && (targetId = this.paperIdToIdMap.get(id))) {
+      this.idToPaperIdMap.delete(targetId);
+      this.paperIdToIdMap.delete(id);
+      this.idToPaperItemMap.delete(targetId);
+    }
+  }
+  public getIdForPaperId(id: number): string | undefined {
+    return this.paperIdToIdMap.get(id)
+  }
+  public getPaperIdForId(id: string): number | undefined {
+    return this.idToPaperIdMap.get(id)
+  }
+  public getPaperItem(id: string | number): paper.Item | undefined {
+    if (this.hasReferenceToId(id)) {
+      if (typeof id == "number") {
+        id = this.paperIdToIdMap.get(id) as string;
+      }
+      return this.idToPaperItemMap.get(id);
+    }
+    return undefined
+  }
 
   public setActiveToolIndex(index: number) {
     this.setActiveTool(this.drawingTools[index]);

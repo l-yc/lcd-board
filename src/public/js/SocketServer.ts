@@ -4,7 +4,7 @@ import paper from 'paper';
 
 import { log } from './utils';
 
-import { DrawEvent } from '../../Socket';
+import { Whiteboard, DrawEvent, DrawPreviewEvent } from '../../Socket';
 import { UI } from './UI';
 import { DrawingTool } from './DrawingTool';
 
@@ -32,34 +32,28 @@ export class SocketServer {
       ui?.performLogout({userInitiated: false});
     });
 
-    this.socket.on('room whiteboard', (whiteboard: DrawEvent[]) => { // after joining
+    this.socket.on('room whiteboard', (whiteboard: Whiteboard) => { // after joining
       log('received room whiteboard:', whiteboard);
       let deGroups: { [group: string]: DrawingTool } = {};
       let cnt = 0;
       const currentUserMemberObj = this.ui?.drawingCanvas?.getDrawingMember(this.getUserId());
       if (currentUserMemberObj) {
-        paper.project.activeLayer.removeChildren();
-        for (let drawEvent of whiteboard) {
-          if (!drawEvent.group) continue;
-
-          let tool: DrawingTool | null;
-          if (!(tool = deGroups[drawEvent.group])) {
-            tool = deGroups[drawEvent.group] =
-              currentUserMemberObj.getDrawingTool(drawEvent.toolId).clone(`roomInitialiserWorker${cnt}`);
-            cnt += 1;
+        let canvas = ui?.drawingCanvas;
+        if (canvas) {
+          canvas.clear();
+          for (let id of whiteboard.idOrder) {
+            canvas.drawSVGItem(id, whiteboard.drawDataRef[id].svg);
           }
-
-          tool.handle(drawEvent);
         }
       }
 
     });
 
-    this.socket.on('draw event', (drawEvent: DrawEvent) => {
-      log({verbose: true}, 'received draw event');
-      if (drawEvent.originUserId != this.getUserId()) {
-        if (drawEvent.originUserId) {
-          this.ui?.drawingCanvas?.getDrawingMember(drawEvent.originUserId)?.handle(drawEvent);
+    this.socket.on('event', (event: DrawEvent | DrawPreviewEvent) => {
+      log({verbose: true}, 'received event', this);
+      if (event.originUserId != this.getUserId()) {
+        if (event.originUserId) {
+          this.ui?.drawingCanvas?.getDrawingMember(event.originUserId)?.handle(event);
         }
       }
     });
@@ -102,16 +96,14 @@ export class SocketServer {
     }
   }
 
-  sendDrawEvent(event: DrawEvent, pathId: string) {
-    if (!this.room) return; // not initialised, FIXME throw an error
+  sendEvent(event: DrawEvent | DrawPreviewEvent) {
+    if (this.room) {
+      let copy: DrawEvent | DrawPreviewEvent  = { ...event };
+      copy.originUserId = this.getUserId();
 
-    let group: string = `${this.getUserId()}_${pathId}`; // globally unique id
-
-    event.group = group;
-    event.originUserId = this.getUserId();
-
-    log({verbose: true}, 'sending draw event');
-    this.socket.emit('draw event', event);
+      log({verbose: true}, 'sending event');
+      this.socket.emit('event', copy);
+    }
   }
 
   getUserId() {

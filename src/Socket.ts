@@ -7,28 +7,47 @@ interface User {
 
 interface Room {
   users: string[];
-  whiteboard: DrawEvent[];
-};
+  whiteboard: Whiteboard;
+}
 
 interface RoomInfo {
   users: { [uid: string]: User };
 };
 
-type DrawEventAction = "begin" | "move" | "end";
+interface Whiteboard {
+  idOrder: string[];
+  drawDataRef: { [id: string]: DrawData };
+}
+
+type DrawPreviewEventAction = "begin" | "move" | "end";
+type DrawEventAction = "add" | "delete" | "change";
+
+interface DrawData {
+  id: string,
+  svg: any
+}
 interface DrawEvent {
-  group?: string,
+  kind: "draw",
   originUserId?: string,
   action: DrawEventAction,
+  toolId: string,
+  data: DrawData[]
+}
+
+interface DrawPreviewEvent {
+  kind: "preview",
+  group?: string,
+  originUserId?: string,
+  action: DrawPreviewEventAction,
   timeStamp: number,
   point: {
     x: number,
     y: number,
   },
-  toolId?: string,
+  toolId: string,
   color: string,
   size: number,
   adjustedSize?: number,
-  persistent: boolean
 };
 
 
@@ -51,7 +70,7 @@ class Socket {
     socket.on('register', this.onRegister.bind(this));
     socket.on('join', this.onJoin.bind(this));
     socket.on('leave', this.onLeave.bind(this));
-    socket.on('draw event', this.onDrawEvent.bind(this));
+    socket.on('event', this.onEvent.bind(this));
   }
 
   private onDisconnect(): void {
@@ -87,15 +106,15 @@ class Socket {
     }
   }
 
-  private onDrawEvent(event: DrawEvent): void {
+  private onEvent(event: DrawEvent | DrawPreviewEvent): void {
     console.log('received event %o', event);
     if (!this.room) {
       // user is not subscribed to any room, don't broadcast
       console.log('invalid event: the user ' + this.socket.id + ' is not subscribed to any room!');
       return;
-    } 
-    this.socket.broadcast.to(this.room).emit('draw event', event);
-    if (event.persistent) this.server.recordDrawEvent(this.socket.id, event);
+    }
+    this.socket.broadcast.to(this.room).emit('event', event);
+    if (event.kind == "draw") this.server.processDrawEvent(this.socket.id, event);
   }
 };
 
@@ -151,6 +170,64 @@ class SocketServer {
     this.users.delete(socketId);
   }
 
+  public processDrawEvent(socketId: string, event: DrawEvent): void {
+    let user: User | undefined = this.users.get(socketId);
+    if (!user) {
+      console.log('unknown DrawEvent source: %s', socketId);
+      return;
+    }
+    if (!user.room) {
+      console.log('user (id %s) is not in a room!', socketId);
+      return;
+    }
+    let room: Room | undefined = this.rooms.get(user.room);
+    if (!room) {
+      console.log('bad roomId', user.room);
+      return;
+    }
+
+    console.log('recording draw event %o', event);
+    switch (event.action) {
+    case "add":
+        for (let data of event.data) {
+            room.whiteboard.idOrder.push(data.id);
+            room.whiteboard.drawDataRef[data.id] = data;
+        }
+        break;
+    case "change":
+        for (let data of event.data) {
+            room.whiteboard.drawDataRef[data.id] = data;
+        }
+        break;
+    case "delete":
+        for (let data of event.data) {
+            delete room.whiteboard.drawDataRef[data.id];
+        }
+        break;
+    }
+  }
+
+  public getRoomWhiteboard(roomId: string): Whiteboard {
+    let room: Room | undefined = this.rooms.get(roomId);
+    if (!room) {
+      throw 'Bad room id ' + roomId;
+    }
+    return room.whiteboard;
+  }
+
+  public doRoomWhiteboardMaintainance(roomId: string): void {
+    let room: Room | undefined = this.rooms.get(roomId);
+    if (room) {
+      let list = room.whiteboard.idOrder;
+      let len = list.length;
+      for (let i = len - 1; i >= 0; i--) {
+        if (room.whiteboard.drawDataRef[list[i]] === undefined) {
+          list.splice(i,1);
+        }
+      }
+    }
+  }
+
   public setUserRoom(socketId: string, room: string | null): void {
     let user = this.users.get(socketId) as User;
 
@@ -171,7 +248,7 @@ class SocketServer {
     if (room) {
       let r: Room;
       if (!this.rooms.has(room)) {
-        r = { users: [], whiteboard: [] };
+        r = { users: [], whiteboard: {idOrder: [], drawDataRef: {}} };
         this.rooms.set(room, r);
       } else {
         r = this.rooms.get(room) as Room;
@@ -192,35 +269,7 @@ class SocketServer {
       this.rooms.delete(room);
     }
   }
-
-  public recordDrawEvent(socketId: string, event: DrawEvent): void {
-    let user: User | undefined = this.users.get(socketId);
-    if (!user) {
-      console.log('unknown DrawEvent source: %s', socketId);
-      return;
-    }
-    if (!user.room) {
-      console.log('user (id %s) is not in a room!', socketId);
-      return;
-    }
-    let room: Room | undefined = this.rooms.get(user.room);
-    if (!room) {
-      console.log('bad roomId', user.room);
-      return;
-    }
-
-    console.log('recording draw event %o', event);
-    room.whiteboard.push(event);
-  }
-
-  public getRoomWhiteboard(roomId: string): DrawEvent[] { // not ideal, cannot handle erasing
-    let room: Room | undefined = this.rooms.get(roomId);
-    if (!room) {
-      throw 'Bad room id ' + roomId;
-    }
-    return room.whiteboard;
-  }
 };
 
 export default SocketServer;
-export { SocketServer, User, Room, RoomInfo, DrawEvent, DrawEventAction };
+export { SocketServer, User, Room, RoomInfo, Whiteboard, DrawEvent, DrawEventAction, DrawPreviewEvent, DrawPreviewEventAction, DrawData };
