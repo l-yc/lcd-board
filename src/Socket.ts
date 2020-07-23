@@ -19,13 +19,28 @@ interface Whiteboard {
   drawDataRef: { [id: string]: DrawData };
 }
 
-type DrawPreviewEventAction = "begin" | "move" | "end";
-type DrawEventAction = "add" | "delete" | "change";
 
-interface DrawData {
-  id: string,
-  json: any
-}
+
+
+/**
+ * BoardEvent is simply a representation of an event
+ * that can be sent to and from the server.
+ *
+ * It can either be a DrawEvent or DrawPreviewEvent.
+ * See the relevant docs for details.
+ */
+type BoardEvent = DrawEvent | DrawPreviewEvent;
+
+/**
+ * DrawEvent is a representation of a draw action.
+ *
+ * It describes every piece of information required to draw in the form of a list
+ * of DrawData objects.
+ *
+ * This action refers to persistent actions, and its DrawData objects will be processed
+ * and cached by the server for further redistribution should there be a need, until
+ * a delete action for the corresponding DrawData is performed.
+ */
 interface DrawEvent {
   kind: "draw",
   originUserId?: string,
@@ -33,10 +48,48 @@ interface DrawEvent {
   toolId: string,
   data: DrawData[]
 }
-
+/**
+ * DrawEventAction describes the action a DrawEvent should take.
+ * There are three options, all of which are up to the tool in question to interpret:
+ * - 'add'    : add the list of json data for the corresponding ids.
+ * - 'delete' : delete the list of json data for the corresponding ids.
+ * - 'change' : dynamically add *or* delete the list of json data for the corresponding ids.
+ */
+type DrawEventAction = "add" | "delete" | "change";
+/**
+ * DrawData contains the minimally required JSON information to be drawn.
+ * It simply has a reference to an id and the json draw data.
+ *
+ * json parameter important notes:
+ *
+ * - null represents draw data with nothing, i.e. draw no content.
+ * if used in conjunction with 'add'    action, an element with nothing will be added.
+ * if used in conjunction with 'change' action, data will be changed to nothing.
+ *
+ * - undefined represents no data whatsoever, i.e. drawing information does not exist.
+ * if used in conjunction with 'add'    action, nothing happens.
+ * if used in conjunction with 'change' action, the 'delete' action should be performed instead.
+ *
+ * the json parameter should be ignored by default if the action is 'delete'
+ */
+interface DrawData {
+  id: string,
+  json: string | null | undefined
+}
+/**
+ * DrawPreviewEvent is a representation for a draw action in a preview stage.
+ * This means the draw action is not finalised yet, or is only a temporary
+ * visual on the client side.
+ *
+ * It describes a single snapshot of the preview event via the relevant parameters.
+ * The event should not be used to send drawing data, and shall be discarded by the
+ * client once the 'end' action is performed or received.
+ *
+ * As this is primarily a client only event, the server only serves as a middleman
+ * to redistribute the event to every connected user, never more than once.
+ */
 interface DrawPreviewEvent {
   kind: "preview",
-  group?: string,
   originUserId?: string,
   action: DrawPreviewEventAction,
   timeStamp: number,
@@ -49,6 +102,19 @@ interface DrawPreviewEvent {
   size: number,
   adjustedSize?: number,
 };
+/**
+ * DrawPreviewEventAction describes the stage of the preview event.
+ * There are three options, all of which are up to the tool in question to interpret:
+ *
+ * For instance:
+ * - 'begin' refers to the start of a preview action,
+ * - 'move'  refers to a change in the preview action,
+ * - 'end'   refers to the end of the preview action.
+ *
+ * When the 'end' action is performed or received, all clients must discard every prior
+ * event until and including the 'begin' action.
+ */
+type DrawPreviewEventAction = "begin" | "move" | "end";
 
 
 // wrapper around SocketIO.Socket
@@ -106,14 +172,20 @@ class Socket {
     }
   }
 
-  private onEvent(event: DrawEvent | DrawPreviewEvent): void {
+  private onEvent(event: BoardEvent): void {
     console.log('received event %o', event);
     if (!this.room) {
       // user is not subscribed to any room, don't broadcast
       console.log('invalid event: the user ' + this.socket.id + ' is not subscribed to any room!');
       return;
     }
+    //set the user id on server side before re-emitting to all clients
+    event.originUserId = this.socket.id;
+
+    //broadcast to room
     this.socket.broadcast.to(this.room).emit('event', event);
+
+    //process the event if it's a DrawEvent
     if (event.kind == "draw") this.server.processDrawEvent(this.socket.id, event);
   }
 };
@@ -188,22 +260,36 @@ class SocketServer {
 
     console.log('recording draw event %o', event);
     switch (event.action) {
-    case "add":
-        for (let data of event.data) {
-            room.whiteboard.idOrder.push(data.id);
-            room.whiteboard.drawDataRef[data.id] = data;
+      case "add":
+      for (let data of event.data) {
+        if (data.json === undefined) continue;
+        // adds a new element and sets the draw data.
+        room.whiteboard.idOrder.push(data.id);
+        room.whiteboard.drawDataRef[data.id] = data;
+      }
+      break;
+      case "change":
+      for (let data of event.data) {
+        if (data.json === undefined) {
+          // perform deletion if json is undefined.
+          // idOrder param will be cleaned up later.
+          delete room.whiteboard.drawDataRef[data.id]
+          continue;
         }
-        break;
-    case "change":
-        for (let data of event.data) {
-            room.whiteboard.drawDataRef[data.id] = data;
+        if (!room.whiteboard.drawDataRef[data.id]) {
+          // adds a new element if necessary or requested.
+          room.whiteboard.idOrder.push(data.id);
         }
-        break;
-    case "delete":
-        for (let data of event.data) {
-            delete room.whiteboard.drawDataRef[data.id];
-        }
-        break;
+        // sets or replaces the draw data for said item.
+        room.whiteboard.drawDataRef[data.id] = data;
+      }
+      break;
+      case "delete": for (let data of event.data) {
+        // deletes the element in place.
+        // idOrder param will be cleaned up later.
+        delete room.whiteboard.drawDataRef[data.id]
+      }
+      break;
     }
   }
 
@@ -212,6 +298,7 @@ class SocketServer {
     if (!room) {
       throw 'Bad room id ' + roomId;
     }
+    this.doRoomWhiteboardMaintainance(roomId);
     return room.whiteboard;
   }
 
@@ -272,4 +359,4 @@ class SocketServer {
 };
 
 export default SocketServer;
-export { SocketServer, User, Room, RoomInfo, Whiteboard, DrawEvent, DrawEventAction, DrawPreviewEvent, DrawPreviewEventAction, DrawData };
+export { SocketServer, User, Room, RoomInfo, Whiteboard, BoardEvent, DrawEvent, DrawEventAction, DrawPreviewEvent, DrawPreviewEventAction, DrawData };

@@ -4,7 +4,7 @@ import paper from 'paper';
 
 import { log } from './utils';
 
-import { Whiteboard, DrawEvent, DrawPreviewEvent } from '../../Socket';
+import { Whiteboard, BoardEvent } from '../../Socket';
 import { UI } from './UI';
 import { DrawingTool } from './DrawingTool';
 
@@ -58,7 +58,7 @@ export class SocketServer {
                   const id = whiteboard.idOrder[i];
                   const item = whiteboard.drawDataRef[id];
                   if (item !== undefined) {
-                    _canvas.drawJSONItem(id, item.json);
+                    const paperItem = _canvas.drawJSONItem(id, item.json);
                     renderCount++;
                   }
                   i++;
@@ -81,10 +81,10 @@ export class SocketServer {
 
     });
 
-    this.socket.on('event', (event: DrawEvent | DrawPreviewEvent) => {
-      log({verbose: true}, 'received event', this);
+    this.socket.on('event', (event: BoardEvent) => {
       if (event.originUserId != this.getUserId()) {
         if (event.originUserId) {
+          log({verbose: true}, 'received event', this);
           this.ui?.drawingCanvas?.getDrawingMember(event.originUserId)?.handle(event);
         }
       }
@@ -128,9 +128,9 @@ export class SocketServer {
     }
   }
 
-  sendEvent(event: DrawEvent | DrawPreviewEvent) {
+  sendEvent(event: BoardEvent) {
     if (this.room) {
-      let copy: DrawEvent | DrawPreviewEvent  = { ...event };
+      let copy: BoardEvent = { ...event };
       copy.originUserId = this.getUserId();
 
       log({verbose: true}, 'sending event');

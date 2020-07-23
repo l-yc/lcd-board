@@ -31,6 +31,8 @@ class DrawingTool {
   readonly minSize: number | null = 2;
   readonly maxSize: number | null = 30;
 
+  readonly hidden: boolean = false;
+
   protected color: string | null = null;
 
   public constructor(name: string, id?: string, icon?: string | null) {
@@ -79,13 +81,13 @@ class DrawingTool {
   }
 
   protected handleMouseEvent(event: any) {
-    log({verbose: true}, 'received', event.type)
+    //log({verbose: true}, 'received', event.type)
     let drawPreviewEvent = this.processMouseEventAsDrawPreviewEvent(event);
     if (drawPreviewEvent) this.handle(drawPreviewEvent);
   }
 
   protected handleKeyEvent(event: any) {
-    log({verbose: true}, 'received', event.type);
+    //log({verbose: true}, 'received', event.type);
     let drawEvent = this.processKeyEventAsDrawEvent(event);
     if (drawEvent) this.handle(drawEvent);
   }
@@ -155,7 +157,7 @@ class DrawingTool {
   protected drawPreviewEventLog: DrawPreviewEvent[] = [];
   public handle(event: DrawEvent | DrawPreviewEvent) {
     if (event.kind == "preview") {
-      log({verbose: true}, 'handling draw preview event', event);
+      //log({verbose: true}, 'handling draw preview event', event);
       if (!event.adjustedSize) {
         if (this.shouldAutoAdjustSizeToFactor()) {
           event.adjustedSize = Math.max(1,event.size + (Math.min(event.size, 30) * (this.sizeAdjustmentFactor - 1)));
@@ -191,7 +193,7 @@ class DrawingTool {
         }
       }
     } else if (event.kind == "draw") {
-      log({verbose: true}, 'handling draw event', event);
+      log({verbose: true}, this.id + ' handling draw event', event);
       let result = this.processDrawEvent(event);
       if (result.broadcast && this.channel && !event.originUserId) {
         this.channel.sendEvent(event);
@@ -255,8 +257,8 @@ class DrawingTool {
     if (this.canvas) {
       let data: DrawData[] = [];
       for (let path of this.previewPathLog) {
-        let id = this.canvas.getIdForPaperId(path.id) || this.generateGUIDv4();
-        this.canvas.setReferenceToIdForPaperItem(id, path);
+        let id = this.canvas.getGUIDForItem(path) || this.generateGUIDv4();
+        this.canvas.setGUIDForItem(id, path);
         data.push({id: id, json: path.exportJSON({asString: true}) as string});
       }
       return data;
@@ -286,6 +288,41 @@ class DrawingTool {
   }
 };
 
+class JSONDrawingTool extends DrawingTool {
+  readonly hidden: boolean = true;
+  public constructor(id?: string) {
+    super('JSON Drawing Tool', id || 'MR_JASON');
+
+  }
+  public clone(id: string): JSONDrawingTool {
+    let newClone = new JSONDrawingTool(id);
+    return newClone;
+  }
+  protected handleMouseEvent(event: any) {}
+  protected handleKeyEvent(event: any) {}
+  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
+    return {success: false, broadcast: false, makeDrawEvent: false}
+  }
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    if (this.canvas) {
+      for (let ele of event.data) {
+        this.canvas.importJSONData(ele.json);
+      }
+    }
+    return {success: true, broadcast: true}
+  }
+  public drawJSON(json: string) {
+    this.handle({
+      kind: "draw",
+      action: "add",
+      toolId: this.id,
+      data: [{id: this.generateGUIDv4(), json: json}],
+    });
+  }
+  public activate() {
+    log('warning: a JSONDrawingTool cannot be activated, it can only be utilised with the drawJSON method.')
+  }
+}
 class Selector extends DrawingTool {
   protected selectionBox: paper.Path.Rectangle | null = null;
 
@@ -350,7 +387,7 @@ class Selector extends DrawingTool {
 
         for (let item of paper.project.getItems({})) {
           if (item.intersects(this.selectionBox) &&
-              this.canvas && this.canvas.hasReferenceToId(item.id)) {
+              this.canvas && this.canvas.hasGUIDForItem(item)) {
             item.selected = true;
           }
         }
@@ -366,7 +403,7 @@ class Selector extends DrawingTool {
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (event.action == "delete") {
       for (let drawData of event.data) {
-        this.canvas?.removeItemAndReferenceToId(drawData.id);
+        this.canvas?.removeItemWithGUID(drawData.id);
       }
     }
     return {success: true, broadcast: true}
@@ -382,7 +419,7 @@ class Eraser extends DrawingTool {
   readonly maxSize = 1000;
 
   public constructor(id?: string) {
-    super("Eraser", id || "THANOS_SNAP", '&#xf12d;');
+    super("Eraser", id || "SNAP", '&#xf12d;');
   }
   public clone(id: string): Eraser {
     let newClone = new Eraser(id);
@@ -411,6 +448,7 @@ class Eraser extends DrawingTool {
     }
     switch (event.action) {
       case 'begin':
+        this.eraserPointer.sendToBack();
         break;
       case 'move':
         this.eraserPointer.position = new paper.Point(point);
@@ -419,25 +457,56 @@ class Eraser extends DrawingTool {
       case 'end':
         this.eraserPointer.remove();
         this.eraserPointer = null;
-        return {success: true, broadcast: true, makeDrawEvent: false};
+        return {success: true, broadcast: false, makeDrawEvent: false};
     }
 
-    let hitTestResult = paper.project.hitTestAll(new paper.Point(point), {fill: true, stroke: true, segments: true, tolerance: size});
+    let hitTestResult = paper.project.hitTestAll(
+      new paper.Point(point),
+      {
+        fill: true,
+        stroke: true,
+        segments: true,
+        tolerance: size,
+        match: (x: paper.HitResult) => {
+          return this.canvas && this.canvas.hasGUIDForItem(x.item) && x.item.parent instanceof paper.Layer;
+        }
+      }
+    );
 
+    this.itemsToChange = [];
+    let itemsAdded: {[id: string]: boolean} = {}
     for (let result of hitTestResult) {
-      if (result.item && this.canvas &&
-          result.item instanceof paper.PathItem &&
-          this.canvas.hasReferenceToId(result.item.id)) {
+      let item = result.item;
+      if (!this.canvas || !item) continue;
 
-        let oldPath = result.item as paper.PathItem;
-        let oldId = this.canvas.getIdForPaperId(oldPath.id) as string;
+      if (item instanceof paper.Path &&
+          this.canvas.hasGUIDForItem(item)) {
+
+        let oldPath = item as paper.Path;
+        let oldId = this.canvas.getGUIDForItem(oldPath) as string;
+
+        if (itemsAdded[oldId]) {
+          log('error: duplicate name!')
+          continue;
+        }
+
+        itemsAdded[oldId] = true;
 
         // we create a new path by subtracting the eraser pointer
-        let newPath = oldPath.subtract(this.eraserPointer, {insert: false, trace: false});
+        let newPath = oldPath.subtract(this.eraserPointer, {trace: false});
+        newPath.remove();
+        let newPaths = this.canvas.expandItem(newPath);
 
-        // we keep the packet for further use later
-        let drawDataPacket = {id: oldId, json: newPath.exportJSON({asString: true}) as string};
-        this.itemsToChange.push(drawDataPacket);
+        this.itemsToChange.push({id: oldId, json: null});
+        for (let path of newPaths) {
+          let id = this.canvas.getGUIDForItem(path) || this.generateGUIDv4();
+          this.canvas.setGUIDForItem(id, path);
+          path.remove();
+          if (path.isEmpty())
+            this.itemsToChange.push({id: id, json: undefined});
+          else
+            this.itemsToChange.push({id: id, json: path.exportJSON({asString: true}) as string});
+        }
       }
     }
     return {
@@ -458,12 +527,16 @@ class Eraser extends DrawingTool {
   }
 
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
-    if (event.action == "change" && this.canvas) {
-      for (let d of event.data) {
-        //overrides old path item with new path item json
-        let item = this.canvas.drawJSONItem(d.id, d.json);
-        if (item.isEmpty()) {
-          this.canvas.removeItemAndReferenceToId(d.id);
+    if (this.canvas) {
+      if (event.action == "change") {
+        for (let d of event.data) {
+          //overrides old path item with new path item json
+          let items = this.canvas.drawJSONItem(d.id, d.json);
+          for (let item of items) {
+            if (item.isEmpty()) {
+              this.canvas.removeItem(item);
+            }
+          }
         }
       }
     }
@@ -509,7 +582,6 @@ class Pen extends DrawingTool {
 
     // add a new point for the current location
     path.add(new paper.Point(event.point));
-    log({verbose: true}, `Segment count: ${path.segments.length} (intermediate)`);
 
     // cleanup once things end
     if (event.action == "end") {
@@ -525,7 +597,7 @@ class Pen extends DrawingTool {
     path.simplify();
     let fina = path.segments.length;
     let per = (orig-fina) / orig * 100.0;
-    log({verbose: true}, `Segment count: ${orig} -> ${fina} (${per.toFixed(2)}% reduction)`);
+    log({verbose: true}, `Simplified segment count: ${orig} -> ${fina} (${per.toFixed(2)}% reduction)`);
 
     return super.createDrawEventFromPreviewActivity();
   }
@@ -571,12 +643,12 @@ class FountainPen extends DrawingTool {
 class LaserPointer extends DrawingTool {
   protected pointer: paper.Path.Circle | null = null;
 
-  readonly minSize: number = 5;
-  protected size: number = 5;
-  readonly maxSize: number = 20;
+  readonly minSize: number = 10;
+  protected size: number = 10;
+  readonly maxSize: number = 40;
 
   public constructor(id?: string) {
-    super("Laser Pointer", id || "THE_SUN_IS_A_DEADLY_LASER", "&#xf185;");
+    super("Laser Pointer", id || "LASER", "&#xf185;");
   }
 
   public clone(id: string): LaserPointer {
@@ -593,9 +665,11 @@ class LaserPointer extends DrawingTool {
     if (!this.pointer) {
       this.pointer = new paper.Path.Circle({
         center: event.point,
-        radius: this.size
+        radius: (event.adjustedSize || event.size)/2
       });
       this.pointer.fillColor = new paper.Color(this.getColor());
+      this.pointer.strokeWidth = 2;
+      this.pointer.strokeColor = new paper.Color('white');
     }
     switch (event.action) {
       case 'begin':
@@ -612,4 +686,4 @@ class LaserPointer extends DrawingTool {
   }
 };
 
-export { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector };
+export { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector, JSONDrawingTool };
