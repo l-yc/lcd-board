@@ -2,35 +2,12 @@ import paper from 'paper';
 
 import { log } from './utils';
 
-import { BoardEvent, DrawEvent, DrawEventAction, EditEvent, EditEventAction } from '../../Socket';
+import { DrawEvent, DrawEventAction } from '../../Socket';
 
 import { SocketServer } from './SocketServer';
 import { DrawingCanvas } from './DrawingCanvas';
 
-// helpers -- TODO move me to a separate file in refactor
-function isDrawEvent(x: BoardEvent): x is DrawEvent {
-  return (x as DrawEvent).point !== undefined;
-}
-
-class PathGroupMap {
-  protected pathToGroup: Map<number,string>;
-  protected groupToPath: Map<string,{ref:paper.Item}>; // not the most memory efficient, but i can't find a findItemById function, so this will do
-  constructor() {
-    this.pathToGroup = new Map();
-    this.groupToPath = new Map();
-  }
-
-  getGroup(pathId: number): string | undefined { return this.pathToGroup.get(pathId); }
-  getPathRef(groupId: string): {ref:paper.Item} | undefined { return this.groupToPath.get(groupId); }
-  insert(pathRef: {ref:paper.Item}, groupId: string): void {
-    this.pathToGroup.set(pathRef.ref.id, groupId);
-    this.groupToPath.set(groupId, pathRef);
-  }
-}
-let pathGroupMap: PathGroupMap = new PathGroupMap();
-
-// drawing tools
-interface BoardEventProcessingResult {success: boolean, broadcast: boolean};
+interface DrawEventProcessingResult {success: boolean, broadcast: boolean};
 class DrawingTool {
   protected tool: paper.Tool;
   protected path: paper.Path | null;
@@ -72,7 +49,7 @@ class DrawingTool {
     this.channel = null;
   }
 
-  public clone(id: string): DrawingTool {
+  public clone(id?: string): DrawingTool {
     let newClone = new DrawingTool(this.name, id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -98,17 +75,17 @@ class DrawingTool {
 
   protected handleMouseEvent(event: any) {
     log({verbose: true}, 'received', event.type)
-    let boardEvent = this.processMouseEventAsBoardEvent(event);
-    if (boardEvent) this.handle(boardEvent);
+    let drawEvent = this.processMouseEventAsDrawEvent(event);
+    if (drawEvent) this.handle(drawEvent);
   }
 
   protected handleKeyEvent(event: any) {
     log({verbose: true}, 'received', event.type);
-    let boardEvent = this.processKeyEventAsBoardEvent(event);
-    if (boardEvent) this.handle(boardEvent);
+    let drawEvent = this.processKeyEventAsDrawEvent(event);
+    if (drawEvent) this.handle(drawEvent);
   }
 
-  protected processMouseEventAsBoardEvent(event: any): BoardEvent | null {
+  protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
     let action: DrawEventAction;
     switch (event.type) {
       case "mousedown": action = "begin"; break;
@@ -130,7 +107,7 @@ class DrawingTool {
     };
   }
 
-  protected processKeyEventAsBoardEvent(event: any): BoardEvent | null { // override this!
+  protected processKeyEventAsDrawEvent(event: any): DrawEvent | null { // override this!
     return null;
   }
 
@@ -168,51 +145,41 @@ class DrawingTool {
       canvas.addEventListener('pointerup', endEventHandler);
     }
   }
-  
-  protected getCurrentDrawGroup() {
-    return this.id + "_" + (this.path ? this.path.id : 0);
-    //return this.id + "_" + this.drawCount;
-  }
 
   protected previousDrawEvent: DrawEvent | null = null;
-  public handle(event: BoardEvent) {
+  public handle(event: DrawEvent) {
     log({verbose: true}, 'handling', event);
 
-    if (isDrawEvent(event)) {
-      if (!event.adjustedSize) {
-        if (this.shouldAutoAdjustSizeToFactor()) {
-          event.adjustedSize = Math.max(1,event.size + (Math.min(event.size, 30) * (this.sizeAdjustmentFactor - 1)));
-        } else {
-          event.adjustedSize = event.size;
-        }
+    if (!event.adjustedSize) {
+      if (this.shouldAutoAdjustSizeToFactor()) {
+        event.adjustedSize = Math.max(1,event.size + (Math.min(event.size, 30) * (this.sizeAdjustmentFactor - 1)));
+      } else {
+        event.adjustedSize = event.size;
       }
     }
 
-    let result = this.processBoardEvent(event);
+    let result = this.processDrawEvent(event);
 
-    if (isDrawEvent(event)) {
-      if (event.action == "begin") this.drawCount += 1;
+    if (event.action == "begin") this.drawCount += 1;
 
-      if (event.action == "end") {
-        // we do some cleanup when a draw action ends
-        this.previousDrawEvent = null;
-        this.sizeAdjustmentFactor = 1;
+    if (event.action == "end") {
+      // we do some cleanup when a draw action ends
+      this.previousDrawEvent = null;
+      this.sizeAdjustmentFactor = 1;
 
-      } else {
-        // update cached previous draw event
-        this.previousDrawEvent = event;
-      }
+    } else {
+      // update cached previous draw event
+      this.previousDrawEvent = event;
     }
 
     // broadcast draw event to others if required
     if (result.broadcast && this.channel && !event.originUserId) {
-      this.channel.sendBoardEvent(event, this.getCurrentDrawGroup());
+      this.channel.sendDrawEvent(event, this.id + "_" + this.drawCount);
     }
   }
 
 
-  protected processBoardEvent(event: BoardEvent): BoardEventProcessingResult {
-    if (!isDrawEvent(event)) return { success: true, broadcast: false }; // ignore edit events
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     let color = new paper.Color(event.color);
     let size = event.adjustedSize || event.size;
 
@@ -256,7 +223,7 @@ class Selector extends DrawingTool {
     };
   }
 
-  public clone(id: string): Selector {
+  public clone(id?: string): Selector {
     let newClone = new Selector(id || this.id);
     return newClone;
   }
@@ -265,83 +232,57 @@ class Selector extends DrawingTool {
     return '#e9e9ff77';
   }
 
-  protected processKeyEventAsBoardEvent(event: any): BoardEvent | null {
-    let action: EditEventAction;
-    let params: any | undefined = undefined;
+  protected processKeyEventAsDrawEvent(event: any): DrawEvent | null {
     switch (event.type) {
       case 'keydown':
         switch (event.key) {
           case 'delete':
           case 'backspace':
-            action = 'delete';
-            let groupIds: string[] = [];
+            alert('error: not implemented');
+            return null;
             for (let item of paper.project.selectedItems) {
-              let groupId = pathGroupMap.getGroup(item.id);
-              if (groupId) groupIds.push(groupId); // TODO throw an error otherwise
+              item.remove(); // FIXME this is not broadcasted!!!
             }
-            params = groupIds;
-            break;
-          default: return null
         }
         break;
-      case 'keyup': return null;
-      default: return null;
+      case 'keyup':
+        break;
     }
-    return {
-      action: action,
-      timeStamp: event.timeStamp,
-      params: params,
-      toolId: this.id,
-      persistent: true
-    } as EditEvent;
+    return null;
   }
 
-  protected processBoardEvent(event: BoardEvent): BoardEventProcessingResult {
-    if (isDrawEvent(event)) {
-      if (!this.selectionBox) {
-        this.selectionBox = new paper.Path.Rectangle(
-          new paper.Point(event.point),
-          new paper.Size(0,0)
-        );
-        this.selectionBox.fillColor = new paper.Color(this.getColor());
-        this.selectionBox.selected = true;
-      }
-      switch (event.action) {
-        case 'begin':
-          break;
-        case 'move':
-          let rect = this.selectionBox;
-          rect.segments[0].point.y = event.point.y;              // lower left point
-          //rect.segments[1].point // upper left point
-          rect.segments[2].point.x = event.point.x;              // upper right point
-          rect.segments[3].point = new paper.Point(event.point); // lower right point
-
-          for (let item of paper.project.getItems({})) {
-            if (item.intersects(this.selectionBox)) {
-              item.selected = true;
-            }
-          }
-          break;
-        case 'end':
-          this.selectionBox.remove();
-          this.selectionBox = null;
-          break;
-      }
-      return {success: true, broadcast: false};
-    } else {
-      event = event as EditEvent; // BoardEvents are either DrawEvents or EditEvents
-      switch (event.action) {
-        case 'delete':
-          for (let groupId of (event.params as string[])) {
-            let pathRef = pathGroupMap.getPathRef(groupId);
-            pathRef?.ref.remove();
-          }
-          break;
-        default:
-          break;
-      }
-      return {success: true, broadcast: true};
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    if (!this.selectionBox) {
+      this.selectionBox = new paper.Path.Rectangle(
+        new paper.Point(event.point),
+        new paper.Size(0,0)
+      );
+      this.selectionBox.fillColor = new paper.Color(this.getColor());
+      this.selectionBox.selected = true;
     }
+    switch (event.action) {
+      case 'begin':
+        break;
+      case 'move':
+        let rect = this.selectionBox;
+
+        rect.segments[0].point.y = event.point.y;              // lower left point
+        //rect.segments[1].point // upper left point
+        rect.segments[2].point.x = event.point.x;              // upper right point
+        rect.segments[3].point = new paper.Point(event.point); // lower right point
+
+        for (let item of paper.project.getItems({})) {
+          if (item.intersects(this.selectionBox)) {
+            item.selected = true;
+          }
+        }
+        break;
+      case 'end':
+        this.selectionBox.remove();
+        this.selectionBox = null;
+      break;
+    }
+    return {success: true, broadcast: false};
   };
 }
 
@@ -356,7 +297,7 @@ class Eraser extends DrawingTool {
   public constructor(id?: string) {
     super("Eraser", id || "THANOS_SNAP", '&#xf12d;');
   }
-  public clone(id: string): Eraser {
+  public clone(id?: string): Eraser {
     let newClone = new Eraser(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -366,8 +307,7 @@ class Eraser extends DrawingTool {
     return 'gray'; //dummy color
   }
 
-  protected processBoardEvent(event: BoardEvent): BoardEventProcessingResult {
-    if (!isDrawEvent(event)) return { success: true, broadcast: false }; // ignore edit events
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     let point = event.point;
     let size = (event.adjustedSize || event.size)/2;
 
@@ -430,7 +370,7 @@ class Pen extends DrawingTool {
   public constructor(id?: string) {
     super("Pen", id || "PEN", "&#xf304;");
   }
-  public clone(id: string): Pen {
+  public clone(id?: string): Pen {
     let newClone = new Pen(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -438,8 +378,7 @@ class Pen extends DrawingTool {
   protected shouldAutoAdjustSizeToFactor(): boolean {
     return true;
   }
-  protected processBoardEvent(event: BoardEvent): BoardEventProcessingResult {
-    if (!isDrawEvent(event)) return { success: true, broadcast: false }; // ignore edit events
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     let color = new paper.Color(event.color);
     let size = event.adjustedSize || event.size;
 
@@ -447,12 +386,6 @@ class Pen extends DrawingTool {
     if (event.action == 'begin' || !this.path) {
       this.path = new paper.Path();
       this.path.strokeCap = 'round';
-
-      if (event.group) {
-        pathGroupMap.insert({ref:this.path}, event.group);
-      } else if (this.channel) {
-        pathGroupMap.insert({ref:this.path}, this.channel.getGroup(event, this.getCurrentDrawGroup()));
-      }
     }
 
     // apply settings
@@ -486,7 +419,7 @@ class DynamicPen extends DrawingTool {
   public constructor(id?: string) {
     super("Dynamic Pen", id || "D_PEN", "&#xf305;");
   }
-  public clone(id: string): DynamicPen {
+  public clone(id?: string): DynamicPen {
     let newClone = new DynamicPen(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -498,7 +431,7 @@ class FountainPen extends DrawingTool {
   public constructor(id?: string) {
     super("Fountain Pen", id || "F_PEN", "&#xf5ac;");
   }
-  public clone(id: string): FountainPen {
+  public clone(id?: string): FountainPen {
     let newClone = new FountainPen(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -506,7 +439,7 @@ class FountainPen extends DrawingTool {
   protected shouldAutoAdjustSizeToFactor(): boolean {
     return true;
   }
-  protected processMouseEventAsBoardEvent(event: any): BoardEvent | null {
+  protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
     if (this.previousDrawEvent && event.type == "mousedrag") {
       let distance = event.delta.length;
 
@@ -515,7 +448,7 @@ class FountainPen extends DrawingTool {
 
       this.sizeAdjustmentFactor = Math.max(0.5, oldFactor - 0.05, Math.min(newFactor, oldFactor + 0.05, 1.5)); //Allow maximum change of 0.05
     }
-    return super.processMouseEventAsBoardEvent(event);
+    return super.processMouseEventAsDrawEvent(event);
   }
 }
 
@@ -530,7 +463,7 @@ class LaserPointer extends DrawingTool {
     super("Laser Pointer", id || "THE_SUN_IS_A_DEADLY_LASER", "&#xf185;");
   }
 
-  public clone(id: string): LaserPointer {
+  public clone(id?: string): LaserPointer {
     let newClone = new LaserPointer(id || this.id);
     newClone.size = this.size;
     return newClone;
@@ -540,14 +473,13 @@ class LaserPointer extends DrawingTool {
     return 'red';
   }
 
-  protected processMouseEventAsBoardEvent(event: any): BoardEvent | null {
-    let result = super.processMouseEventAsBoardEvent(event);
+  protected processMouseEventAsDrawEvent(event: any): DrawEvent | null {
+    let result = super.processMouseEventAsDrawEvent(event);
     if (result) result.persistent = false;
     return result;
   }
 
-  protected processBoardEvent(event: BoardEvent): BoardEventProcessingResult {
-    if (!isDrawEvent(event)) return { success: true, broadcast: false }; // ignore edit events
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (!this.pointer) {
       this.pointer = new paper.Path.Circle({
         center: event.point,
@@ -577,15 +509,14 @@ class DrunkPen extends DrawingTool {
     super("Drunk Pen", id || "DONT_DRINK_AND_DRIVE", "&#xf0fc;");
   }
 
-  public clone(id: string): DrunkPen {
+  public clone(id?: string): DrunkPen {
     let newClone = new DrunkPen(id || this.id);
     newClone.size = this.size;
     return newClone;
   }
 
   protected momentum: { x: number, y: number } = { x: 0, y: 0 };
-  public handle(event: BoardEvent) {
-    if (!isDrawEvent(event)) return; // ignore edit events
+  public handle(event: DrawEvent) {
     log({verbose: true}, 'handling', event);
 
     let eventOriginal = JSON.parse(JSON.stringify(event)); // backup a deep copy of the event to be saved
@@ -672,7 +603,7 @@ class DrunkPen extends DrawingTool {
 
     // broadcast draw event to others if required
     if (this.channel && !event.originUserId) {
-      this.channel.sendBoardEvent(event, this.id + "_" + this.drawCount);
+      this.channel.sendDrawEvent(event, this.id + "_" + this.drawCount);
     }
   }
 };
