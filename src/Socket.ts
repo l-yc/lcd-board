@@ -53,7 +53,7 @@ interface DrawEvent {
  * There are three options, all of which are up to the tool in question to interpret:
  * - 'add'    : add the list of json data for the corresponding ids.
  * - 'delete' : delete the list of json data for the corresponding ids.
- * - 'change' : dynamically add *or* delete the list of json data for the corresponding ids.
+ * - 'change' : dynamically add, change *or* delete the list of json data for the corresponding ids.
  */
 type DrawEventAction = "add" | "delete" | "change";
 /**
