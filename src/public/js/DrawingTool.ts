@@ -59,6 +59,7 @@ class DrawingTool {
   public clone(id: string): DrawingTool {
     let newClone = new DrawingTool(this.name, id || this.id);
     newClone.size = this.size;
+    newClone.canvas = this.canvas;
     return newClone;
   }
 
@@ -256,7 +257,7 @@ class DrawingTool {
   protected getAsDrawDataList(pathList: paper.Item[]): DrawData[] {
     if (this.canvas) {
       let data: DrawData[] = [];
-      for (let path of this.previewPathLog) {
+      for (let path of pathList) {
         let id = this.canvas.getGUIDForItem(path) || this.generateGUIDv4();
         this.canvas.setGUIDForItem(id, path);
         data.push({id: id, json: path.exportJSON({asString: true}) as string});
@@ -296,6 +297,7 @@ class JSONDrawingTool extends DrawingTool {
   }
   public clone(id: string): JSONDrawingTool {
     let newClone = new JSONDrawingTool(id);
+    newClone.canvas = this.canvas;
     return newClone;
   }
   protected handleMouseEvent(event: any) {}
@@ -338,6 +340,7 @@ class Selector extends DrawingTool {
 
   public clone(id: string): Selector {
     let newClone = new Selector(id);
+    newClone.canvas = this.canvas;
     return newClone;
   }
 
@@ -424,6 +427,7 @@ class Eraser extends DrawingTool {
   public clone(id: string): Eraser {
     let newClone = new Eraser(id);
     newClone.size = this.size;
+    newClone.canvas = this.canvas;
     return newClone;
   }
 
@@ -552,6 +556,7 @@ class Pen extends DrawingTool {
   public clone(id: string): Pen {
     let newClone = new Pen(id);
     newClone.size = this.size;
+    newClone.canvas = this.canvas;
     return newClone;
   }
   protected shouldAutoAdjustSizeToFactor(): boolean {
@@ -610,6 +615,7 @@ class DynamicPen extends DrawingTool {
   public clone(id: string): DynamicPen {
     let newClone = new DynamicPen(id);
     newClone.size = this.size;
+    newClone.canvas = this.canvas;
     return newClone;
   }
   protected pressureSensitive = true;
@@ -622,6 +628,7 @@ class FountainPen extends DrawingTool {
   public clone(id: string): FountainPen {
     let newClone = new FountainPen(id);
     newClone.size = this.size;
+    newClone.canvas = this.canvas;
     return newClone;
   }
   protected shouldAutoAdjustSizeToFactor(): boolean {
@@ -654,6 +661,7 @@ class LaserPointer extends DrawingTool {
   public clone(id: string): LaserPointer {
     let newClone = new LaserPointer(id);
     newClone.size = this.size;
+    newClone.canvas = this.canvas;
     return newClone;
   }
 
