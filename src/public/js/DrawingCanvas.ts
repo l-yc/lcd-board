@@ -49,7 +49,18 @@ export class DrawingCanvas {
 
   public importJSONData(json: string | null | undefined) {
     if (!json) return;
-    paper.project.activeLayer.importJSON(json);
+    let _jsonTool: JSONDrawingTool | null = null;
+    for (let tool of this.getToolsIncludingHidden()) {
+      if (tool instanceof JSONDrawingTool) {
+        _jsonTool = tool;
+      }
+    }
+    if (!_jsonTool) {
+      log("JSON drawing tool not found, can't import JSON!");
+      return;
+    }
+    const jsonTool = _jsonTool;
+    jsonTool.drawJSON(json);
   }
   public exportJSONData(): string {
     return paper.project.activeLayer.exportJSON({asString: true}) as string;
@@ -64,23 +75,11 @@ export class DrawingCanvas {
     a.download = name;
     a.click();
   }
-  public insertJSONFromDisk() {
-    let _jsonTool: JSONDrawingTool | null = null;
-    for (let tool of this.getToolsIncludingHidden()) {
-      if (tool instanceof JSONDrawingTool) {
-        _jsonTool = tool;
-      }
-    }
-    if (!_jsonTool) {
-      log("JSON drawing tool not found, can't import JSON!");
-      return;
-    }
-    const jsonTool = _jsonTool;
-
+  public loadJSONFromDisk() {
     let fileInput = document.createElement("input");
     fileInput.type='file';
     fileInput.style.display='none';
-    fileInput.onchange = function(e: any) {
+    fileInput.onchange = (e: any) => {
       if (e.target && e.target.files) {
         var file = e.target.files[0];
         if (!file) {
@@ -92,7 +91,8 @@ export class DrawingCanvas {
             let contents = e.target.result;
 
             //imported contents
-            jsonTool.drawJSON(contents);
+            this.clear();
+            this.importJSONData(contents);
 
             document.body.removeChild(fileInput)
           };

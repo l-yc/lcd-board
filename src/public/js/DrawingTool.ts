@@ -289,266 +289,6 @@ class DrawingTool {
   }
 };
 
-class JSONDrawingTool extends DrawingTool {
-  readonly hidden: boolean = true;
-  public constructor(id?: string) {
-    super('JSON Drawing Tool', id || 'MR_JASON');
-
-  }
-  public clone(id: string): JSONDrawingTool {
-    let newClone = new JSONDrawingTool(id);
-    newClone.canvas = this.canvas;
-    return newClone;
-  }
-  protected handleMouseEvent(event: any) {}
-  protected handleKeyEvent(event: any) {}
-  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
-    return {success: false, broadcast: false, makeDrawEvent: false}
-  }
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
-    if (this.canvas) {
-      for (let ele of event.data) {
-        this.canvas.importJSONData(ele.json);
-      }
-    }
-    return {success: true, broadcast: true}
-  }
-  public drawJSON(json: string) {
-    this.handle({
-      kind: "draw",
-      action: "add",
-      toolId: this.id,
-      data: [{id: this.generateGUIDv4(), json: json}],
-    });
-  }
-  public activate() {
-    log('warning: a JSONDrawingTool cannot be activated, it can only be utilised with the drawJSON method.')
-  }
-}
-class Selector extends DrawingTool {
-  protected selectionBox: paper.Path.Rectangle | null = null;
-
-  public constructor(id?: string) {
-    super('Selector', id || 'SELECTOR', '&#xf247;');
-
-    paper.project.view.onMouseDown = (event: paper.MouseEvent) => {
-      if (paper.project.selectedItems.length > 0) {
-        paper.project.deselectAll();
-      }
-    };
-  }
-
-  public clone(id: string): Selector {
-    let newClone = new Selector(id);
-    newClone.canvas = this.canvas;
-    return newClone;
-  }
-
-  public getColor(): string {
-    return '#e9e9ff77';
-  }
-
-  protected processKeyEventAsDrawEvent(event: any): DrawEvent | null {
-    switch (event.type) {
-      case 'keydown':
-        switch (event.key) {
-          case 'delete':
-          case 'backspace':
-          return {
-            kind: "draw",
-            action: "delete",
-            toolId: this.id,
-            data: this.getAsDrawDataList(paper.project.selectedItems)
-          }
-        }
-        break;
-      case 'keyup':
-        break;
-    }
-    return null;
-  }
-
-  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
-    if (!this.selectionBox) {
-      this.selectionBox = new paper.Path.Rectangle(
-        new paper.Point(event.point),
-        new paper.Size(0,0)
-      );
-      this.selectionBox.fillColor = new paper.Color(this.getColor());
-      this.selectionBox.selected = true;
-    }
-    switch (event.action) {
-      case 'begin':
-        break;
-      case 'move':
-        let rect = this.selectionBox;
-
-        rect.segments[0].point.y = event.point.y;              // lower left point
-        //rect.segments[1].point // upper left point
-        rect.segments[2].point.x = event.point.x;              // upper right point
-        rect.segments[3].point = new paper.Point(event.point); // lower right point
-
-        for (let item of paper.project.getItems({})) {
-          if (item.intersects(this.selectionBox) &&
-              this.canvas && this.canvas.hasGUIDForItem(item)) {
-            item.selected = true;
-          }
-        }
-        break;
-      case 'end':
-        this.selectionBox.remove();
-        this.selectionBox = null;
-      break;
-    }
-    return {success: true, broadcast: false, makeDrawEvent: false};
-  };
-
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
-    if (event.action == "delete") {
-      for (let drawData of event.data) {
-        this.canvas?.removeItemWithGUID(drawData.id);
-      }
-    }
-    return {success: true, broadcast: true}
-  }
-}
-
-class Eraser extends DrawingTool {
-
-  protected eraserPointer: paper.Path | null = null;
-
-  readonly minSize = 10;
-  protected size = 30;
-  readonly maxSize = 1000;
-
-  public constructor(id?: string) {
-    super("Eraser", id || "SNAP", '&#xf12d;');
-  }
-  public clone(id: string): Eraser {
-    let newClone = new Eraser(id);
-    newClone.size = this.size;
-    newClone.canvas = this.canvas;
-    return newClone;
-  }
-
-  public getColor(): string {
-    return 'gray'; //dummy color
-  }
-
-  protected itemsToChange: DrawData[] = [];
-  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
-    let point = event.point;
-    let size = (event.adjustedSize || event.size)/2;
-
-    if (!this.eraserPointer) {
-      this.eraserPointer = new paper.Path.Circle({
-        center: point,
-        radius: size
-      });
-      let nonLocal = !!event.originUserId;
-      this.eraserPointer.strokeWidth = 1;
-      this.eraserPointer.strokeColor = nonLocal ? new paper.Color('#ffffff01') : new paper.Color('#aaaaaa');
-      this.eraserPointer.fillColor   = nonLocal ? new paper.Color('#ffffff01') : new paper.Color('#ffffff');
-    }
-    switch (event.action) {
-      case 'begin':
-        this.eraserPointer.sendToBack();
-        break;
-      case 'move':
-        this.eraserPointer.position = new paper.Point(point);
-        this.eraserPointer.sendToBack();
-        break;
-      case 'end':
-        this.eraserPointer.remove();
-        this.eraserPointer = null;
-        return {success: true, broadcast: false, makeDrawEvent: false};
-    }
-
-    let hitTestResult = paper.project.hitTestAll(
-      new paper.Point(point),
-      {
-        fill: true,
-        stroke: true,
-        segments: true,
-        tolerance: size,
-        match: (x: paper.HitResult) => {
-          return this.canvas && this.canvas.hasGUIDForItem(x.item) && x.item.parent instanceof paper.Layer;
-        }
-      }
-    );
-
-    this.itemsToChange = [];
-    let itemsAdded: {[id: string]: boolean} = {}
-    for (let result of hitTestResult) {
-      let item = result.item;
-      if (!this.canvas || !item) continue;
-
-      if (item instanceof paper.Path &&
-          this.canvas.hasGUIDForItem(item)) {
-
-        let oldPath = item as paper.Path;
-        let oldId = this.canvas.getGUIDForItem(oldPath) as string;
-
-        if (itemsAdded[oldId]) {
-          log('error: duplicate name!')
-          continue;
-        }
-
-        itemsAdded[oldId] = true;
-
-        // we create a new path by subtracting the eraser pointer
-        let newPath = oldPath.subtract(this.eraserPointer, {trace: false});
-        newPath.remove();
-        let newPaths = this.canvas.expandItem(newPath);
-
-        this.itemsToChange.push({id: oldId, json: null});
-        for (let path of newPaths) {
-          let id = this.canvas.getGUIDForItem(path) || this.generateGUIDv4();
-          this.canvas.setGUIDForItem(id, path);
-          path.remove();
-          if (path.isEmpty())
-            this.itemsToChange.push({id: id, json: undefined});
-          else
-            this.itemsToChange.push({id: id, json: path.exportJSON({asString: true}) as string});
-        }
-      }
-    }
-    return {
-      success: true,
-      broadcast: false,
-      makeDrawEvent: this.itemsToChange.length > 0
-    };
-  }
-  protected createDrawEventFromPreviewActivity(): DrawEvent {
-    let drawEvent: DrawEvent = {
-      kind: "draw",
-      action: "change",
-      toolId: this.id,
-      data: this.itemsToChange
-    }
-    this.itemsToChange = [];
-    return drawEvent;
-  }
-
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
-    if (this.canvas) {
-      if (event.action == "change") {
-        for (let d of event.data) {
-          //overrides old path item with new path item json
-          let items = this.canvas.drawJSONItem(d.id, d.json);
-          for (let item of items) {
-            if (item.isEmpty()) {
-              this.canvas.removeItem(item);
-            }
-          }
-        }
-      }
-    }
-    return {success: true, broadcast: true}
-  }
-
-}
-
 class Pen extends DrawingTool {
   public constructor(id?: string) {
     super("Pen", id || "PEN", "&#xf304;");
@@ -693,5 +433,268 @@ class LaserPointer extends DrawingTool {
     return {success: true, broadcast: true, makeDrawEvent: false};
   }
 };
+class Selector extends DrawingTool {
+  protected selectionBox: paper.Path.Rectangle | null = null;
+
+  public constructor(id?: string) {
+    super('Selector', id || 'SELECTOR', '&#xf247;');
+
+    paper.project.view.onMouseDown = (event: paper.MouseEvent) => {
+      if (paper.project.selectedItems.length > 0) {
+        paper.project.deselectAll();
+      }
+    };
+  }
+
+  public clone(id: string): Selector {
+    let newClone = new Selector(id);
+    newClone.canvas = this.canvas;
+    return newClone;
+  }
+
+  public getColor(): string {
+    return '#e9e9ff77';
+  }
+
+  protected processKeyEventAsDrawEvent(event: any): DrawEvent | null {
+    switch (event.type) {
+      case 'keydown':
+        switch (event.key) {
+          case 'delete':
+          case 'backspace':
+          return {
+            kind: "draw",
+            action: "delete",
+            toolId: this.id,
+            data: this.getAsDrawDataList(paper.project.selectedItems)
+          }
+        }
+        break;
+      case 'keyup':
+        break;
+    }
+    return null;
+  }
+
+  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
+    if (!this.selectionBox) {
+      this.selectionBox = new paper.Path.Rectangle(
+        new paper.Point(event.point),
+        new paper.Size(0,0)
+      );
+      this.selectionBox.fillColor = new paper.Color(this.getColor());
+      this.selectionBox.selected = true;
+    }
+    switch (event.action) {
+      case 'begin':
+        break;
+      case 'move':
+        let rect = this.selectionBox;
+
+        rect.segments[0].point.y = event.point.y;              // lower left point
+        //rect.segments[1].point // upper left point
+        rect.segments[2].point.x = event.point.x;              // upper right point
+        rect.segments[3].point = new paper.Point(event.point); // lower right point
+
+        for (let item of paper.project.getItems({})) {
+          if (item.intersects(this.selectionBox) &&
+              this.canvas && this.canvas.hasGUIDForItem(item)) {
+            item.selected = true;
+          }
+        }
+        break;
+      case 'end':
+        this.selectionBox.remove();
+        this.selectionBox = null;
+      break;
+    }
+    return {success: true, broadcast: false, makeDrawEvent: false};
+  };
+
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    if (event.action == "delete") {
+      for (let drawData of event.data) {
+        this.canvas?.removeItemWithGUID(drawData.id);
+      }
+    }
+    return {success: true, broadcast: true}
+  }
+}
+class Eraser extends DrawingTool {
+
+  protected eraserPointer: paper.Path | null = null;
+
+  readonly minSize = 10;
+  protected size = 30;
+  readonly maxSize = 1000;
+
+  public constructor(id?: string) {
+    super("Eraser", id || "SNAP", '&#xf12d;');
+  }
+  public clone(id: string): Eraser {
+    let newClone = new Eraser(id);
+    newClone.size = this.size;
+    newClone.canvas = this.canvas;
+    return newClone;
+  }
+
+  public getColor(): string {
+    return 'gray'; //dummy color
+  }
+
+  protected itemsToChange: DrawData[] = [];
+  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
+    let point = event.point;
+    let size = (event.adjustedSize || event.size)/2;
+
+    if (!this.eraserPointer) {
+      this.eraserPointer = new paper.Path.Circle({
+        center: point,
+        radius: size
+      });
+      let nonLocal = !!event.originUserId;
+      this.eraserPointer.strokeWidth = 1;
+      this.eraserPointer.strokeColor = nonLocal ? new paper.Color('#ffffff01') : new paper.Color('#aaaaaa');
+      this.eraserPointer.fillColor   = nonLocal ? new paper.Color('#ffffff01') : new paper.Color('#ffffff');
+    }
+    switch (event.action) {
+      case 'begin':
+        this.eraserPointer.sendToBack();
+        break;
+      case 'move':
+        this.eraserPointer.position = new paper.Point(point);
+        this.eraserPointer.sendToBack();
+        break;
+      case 'end':
+        this.eraserPointer.remove();
+        this.eraserPointer = null;
+        return {success: true, broadcast: false, makeDrawEvent: false};
+    }
+
+    let hitTestResult = paper.project.hitTestAll(
+      new paper.Point(point),
+      {
+        fill: true,
+        stroke: true,
+        segments: true,
+        tolerance: size,
+        match: (x: paper.HitResult) => {
+          return this.canvas && this.canvas.hasGUIDForItem(x.item) && x.item.parent instanceof paper.Layer;
+        }
+      }
+    );
+
+    this.itemsToChange = [];
+    let itemsAdded: {[id: string]: boolean} = {}
+    for (let result of hitTestResult) {
+      let item = result.item;
+      if (!this.canvas || !item) continue;
+
+      if (item instanceof paper.Path &&
+          this.canvas.hasGUIDForItem(item)) {
+
+        let oldPath = item as paper.Path;
+        let oldId = this.canvas.getGUIDForItem(oldPath) as string;
+
+        if (itemsAdded[oldId]) {
+          log('error: duplicate name!')
+          continue;
+        }
+
+        itemsAdded[oldId] = true;
+
+        // we create a new path by subtracting the eraser pointer
+        let newPath = oldPath.subtract(this.eraserPointer, {trace: false});
+        newPath.remove();
+        let newPaths = this.canvas.expandItem(newPath);
+
+        this.itemsToChange.push({id: oldId, json: null});
+        for (let path of newPaths) {
+          let id = this.canvas.getGUIDForItem(path) || this.generateGUIDv4();
+          this.canvas.setGUIDForItem(id, path);
+          path.remove();
+          if (path.isEmpty())
+            this.itemsToChange.push({id: id, json: undefined});
+          else
+            this.itemsToChange.push({id: id, json: path.exportJSON({asString: true}) as string});
+        }
+      }
+    }
+    return {
+      success: true,
+      broadcast: false,
+      makeDrawEvent: this.itemsToChange.length > 0
+    };
+  }
+  protected createDrawEventFromPreviewActivity(): DrawEvent {
+    let drawEvent: DrawEvent = {
+      kind: "draw",
+      action: "change",
+      toolId: this.id,
+      data: this.itemsToChange
+    }
+    this.itemsToChange = [];
+    return drawEvent;
+  }
+
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    if (this.canvas) {
+      if (event.action == "change") {
+        for (let d of event.data) {
+          //overrides old path item with new path item json
+          let items = this.canvas.drawJSONItem(d.id, d.json);
+          for (let item of items) {
+            if (item.isEmpty()) {
+              this.canvas.removeItem(item);
+            }
+          }
+        }
+      }
+    }
+    return {success: true, broadcast: true}
+  }
+
+}
+
+class JSONDrawingTool extends DrawingTool {
+  readonly hidden: boolean = true;
+  public constructor(id?: string) {
+    super('JSON Drawing Tool', id || 'MR_JASON');
+
+  }
+  public clone(id: string): JSONDrawingTool {
+    let newClone = new JSONDrawingTool(id);
+    newClone.canvas = this.canvas;
+    return newClone;
+  }
+  protected handleMouseEvent(event: any) {}
+  protected handleKeyEvent(event: any) {}
+  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
+    return {success: false, broadcast: false, makeDrawEvent: false}
+  }
+  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
+    if (this.canvas) {
+      for (let ele of event.data) {
+        this.canvas.importJSONData(ele.json);
+      }
+    }
+    return {success: true, broadcast: true}
+  }
+  public drawJSON(json: string) {
+    log('note: json drawing tool draw json method is not implemented')
+    /*
+    this.handle({
+      kind: "draw",
+      action: "add",
+      toolId: this.id,
+      data: [{id: this.generateGUIDv4(), json: json}],
+    });
+    */
+  }
+  public activate() {
+    log('warning: a JSONDrawingTool cannot be activated, it can only be utilised with the drawJSON method.')
+  }
+}
+
 
 export { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector, JSONDrawingTool };
