@@ -182,7 +182,7 @@ Other variables and methods that can be overriden or have their default values c
 A `BoardEvent` is simply a representation of an event that can be sent to and from the server.
 It can either be a `DrawEvent` or `DrawPreviewEvent`.
 
-#### DrawEvent
+### DrawEvent
 A `DrawEvent` is a representation of a draw action.
 It describes every piece of information required to draw in the form of a list of DrawData objects.
 
@@ -190,7 +190,7 @@ This action refers to persistent actions, and its `DrawData` objects will be pro
 the server for further redistribution should there be a need,
 until a `'delete'` `DrawEventAction` for the corresponding `DrawData` is performed.
 
-##### DrawEventAction
+### DrawEventAction
 DrawEventAction describes the action a DrawEvent should take.
 
 There are three options, all of which are up to the tool in question to interpret:
@@ -198,7 +198,7 @@ There are three options, all of which are up to the tool in question to interpre
  - `'delete'` : delete the list of json data for the corresponding ids.
  - `'change'` : dynamically add *or* delete the list of json data for the corresponding ids.
 
-##### DrawData
+### DrawData
 DrawData contains the minimally required JSON information to be drawn.
 It simply has a reference to an `id` and the `json` draw data as a string.
 
@@ -220,7 +220,7 @@ PS: `json` parameter important notes:
     - If used in conjunction with `'change'` action, the `'delete'` action should be performed instead.
 
 
-#### DrawPreviewEvent
+### DrawPreviewEvent
 A `DrawPreviewEvent` is a representation for a draw action in a preview stage.
 This means the draw action is not finalised yet, or is only a
 temporary visual on the client side.
@@ -232,7 +232,7 @@ by the client once the `'end'` `DrawPreviewEventAction` is performed or received
 As this is primarily a client only event, the server only serves as a middleman
 to redistribute the event to every connected user, never more than once.
 
-##### DrawPreviewEventAction
+### DrawPreviewEventAction
 `DrawPreviewEventAction` describes the stage of the preview event.
 There are three options, all of which are up to the tool in question to interpret:
 
