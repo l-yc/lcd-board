@@ -1,18 +1,18 @@
 import { log } from './utils';
 
-import { User, DrawEvent } from '../../Socket';
+import { User, DrawEvent, DrawPreviewEvent } from '../../Socket';
 import { DrawingTool } from './DrawingTool';
 
 export class DrawingMember {
   readonly id: string;
   private user: User;
-  private drawingTool: DrawingTool;
+  private fallbackDrawingTool: DrawingTool;
   private drawingTools: DrawingTool[] = [];
 
   constructor(id: string, user: User) {
     this.id = id;
     this.user = user;
-    this.drawingTool = new DrawingTool(user.username || id, id);
+    this.fallbackDrawingTool = new DrawingTool(user.username || id, id);
   }
 
   configureUsingDrawingTools(tools: DrawingTool[]) {
@@ -26,11 +26,12 @@ export class DrawingMember {
     if (toolId)
       for (let tool of this.drawingTools)
         if (tool.id == (this.id + "_" + toolId))
-          return tool;
-    return this.drawingTool;
+            return tool;
+    log({verbose: true}, "warning: tool id is not found and thus the fallback tool is returned")
+    return this.fallbackDrawingTool;
   }
 
-  handle(event: DrawEvent) {
+  handle(event: DrawEvent | DrawPreviewEvent) {
     if (event.originUserId == this.id)
       this.getDrawingTool(event.toolId).handle(event)
     else

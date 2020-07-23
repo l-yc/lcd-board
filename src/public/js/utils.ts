@@ -1,5 +1,5 @@
 let LOG = true;
-let VERBOSE = false;
+let VERBOSE = true;
 
 function log(...args: any) {
   if (!LOG || (!VERBOSE && args.length > 0 && args[0].verbose)) return;

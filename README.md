@@ -10,7 +10,7 @@
 
 This web app operates on the idea of rooms, where each room has a unique whiteboard. It allows multiple users to concurrently connect and draw in a room at any given point in time.
 
-As of now, room whiteboards are only persistent for as long as at least one user is connected to the room. If no one's connected to a room with a non-empty whiteboard, it'll be automatically discarded after 60 seconds.
+As of now, room whiteboards are only persistent for as long as at least one user is connected to the room. If no one's connected to a room with a non-empty whiteboard, it'll be automatically discarded after 5 minutes.
 
 The web app has quite a bit of drawing tools to choose from, and you can pick the color and size on supported tools. Following is a list of them:
 - Pen
@@ -36,9 +36,10 @@ The web app has quite a bit of drawing tools to choose from, and you can pick th
 - Laser Pointer
     - Just like using a real life laser pointer.
     - Especially useful for collabration.
+- Selector
+    - Select strokes and delete them using the delete or backspace key.
 - Weighted Pen [WIP]
-    - currently renamed to Drunk Pen as a joke as it's really broken
-- Selection [WIP]
+    - Temporarily removed as it isn't working.
 
 Have fun!
 
@@ -134,32 +135,34 @@ Click and drag a mouse, drag your finger across a touchscreen, or write using a 
 
 Click or tap the current drawing tool or connection status indicator to view more options.
 
-## Custom drawing tools
+## Implementation details
 
-You can easily add your own drawing tools simply by extending the `DrawingTool` class in `DrawingTool.ts`.
-
+### DrawingTool
 A `DrawingTool` is simply a dummy implementation of a fixed-width pen. Its size is configurable but color is determined based on the canvas active color by default.
 
-A `DrawEvent` is an interface which forms the basis of all event packets regarding any action on the drawing canvas.
+New tools are created by subclassing `DrawingTool`.
 
-You must to override the `clone()` method so as the tool can be cloned for drawing by each separate user.
+When creating a subclass of `DrawingTool`, you **must** override the `clone()` method and implement it correctly so as the tool can be cloned for drawing by each separate user.
 
 You should only need to override the following methods to configure your tool's handling from system events all the way to drawing a stroke:
 
-- `handleMouseEventAsDrawEvent(_:)`
-    - handles conversion from a paper.js MouseEvent to a `DrawEvent`.
+- `handleMouseEventAsDrawPreviewEvent(_:)`
+    - handles conversion from a paper.js MouseEvent to a `DrawPreviewEvent`.
 - `handleKeyEventAsDrawEvent(_:)`
     - handles conversion from a paper.js KeyEvent to a `DrawEvent`.
+- `processDrawPreviewEvent(_:)`
+    - handles previewing and recording a `DrawPreviewEvent` to graphics or actions on the canvas.
+- `createDrawEventFromPreviewActivity()`
+    - handles the processing of historical events to a `DrawEvent`.
+    - you should provide data in the form of `DrawData` objects, which should contain the paper.js path data as an exported JSON string.
 - `processDrawEvent(_:)`
-    - handles translating a `DrawEvent` to graphics on the canvas (or anything else).
+    - handles translating a `DrawEvent` to graphics or actions on the canvas.
 
 Add them to the list of exported tools in `DrawingTool.ts`, and remember to import them and add to the list of tools in `index.ts`.
 
-You're done! Remember to rebuild the project, then try it out in your browser.
-
-You may find the following parameters useful to access:
-- `previousDrawEvent`
-    - contains the previous draw event for a single stroke, if there is one.
+You may be interested in the following helper methods:
+- `generateGUIDv4()`
+- `getAsDrawDataList(_:)`
 
 You may want to modify the following parameters when drawing:
 - `sizeAdjustmentFactor`
@@ -175,12 +178,79 @@ Other variables and methods that can be overriden or have their default values c
 - `getSize()`
 - `getColor()`
 
+### BoardEvent
+A `BoardEvent` is simply a representation of an event that can be sent to and from the server.
+It can either be a `DrawEvent` or `DrawPreviewEvent`.
+
+### DrawEvent
+A `DrawEvent` is a representation of a draw action.
+It describes every piece of information required to draw in the form of a list of DrawData objects.
+
+This action refers to persistent actions, and its `DrawData` objects will be processed and cached by
+the server for further redistribution should there be a need,
+until a `'delete'` `DrawEventAction` for the corresponding `DrawData` is performed.
+
+### DrawEventAction
+DrawEventAction describes the action a DrawEvent should take.
+
+There are three options, all of which are up to the tool in question to interpret:
+ - `'add'   ` : add the list of json data for the corresponding ids.
+ - `'delete'` : delete the list of json data for the corresponding ids.
+ - `'change'` : dynamically add, change *or* delete the list of json data for the corresponding ids.
+
+### DrawData
+DrawData contains the minimally required JSON information to be drawn.
+It simply has a reference to an `id` and the `json` draw data as a string.
+
+The `id` must be a GUID, and be correctly tagged with the GUID via the
+`DrawingCanvas.setGUIDForItem` method before utilising the paper.js path's JSON data.
+
+An optional parameter `aboveId` can be given in the cases for `'add'` and `'change'`
+actions, and the target `id` path will be added or moved to right above `aboveId`.
+
+PS: `json` parameter important notes:
+
+- The `json` parameter should be ignored by default if the action is `'delete'`.
+- Special cases:
+    - If the `'add'` action is used but a GUID already exists, the behaviour is undefined.
+    - If the `'change'` action is used but no such GUID exists to modify, the `'add'` action will be performed.
+    - If the `'delete'` action is used but no such GUID exists to delete, nothing happens.
+- If the parameter is set to `null`, it represents draw data with nothing, i.e. draw no content.
+    - If used in conjunction with `'add'   ` action, an element with nothing will be added.
+    - If used in conjunction with `'change'` action, data will be changed to nothing.
+- If the parameter is set to `undefined`, it represents no data whatsoever, i.e. drawing information does not exist.
+    - If used in conjunction with `'add'   ` action, nothing happens.
+    - If used in conjunction with `'change'` action, the `'delete'` action should be performed instead.
+
+
+### DrawPreviewEvent
+A `DrawPreviewEvent` is a representation for a draw action in a preview stage.
+This means the draw action is not finalised yet, or is only a
+temporary visual on the client side.
+
+It describes a single snapshot of the preview event via the relevant parameters.
+The event should not be used to send drawing data, and shall be discarded
+by the client once the `'end'` `DrawPreviewEventAction` is performed or received.
+
+As this is primarily a client only event, the server only serves as a middleman
+to redistribute the event to every connected user, never more than once.
+
+### DrawPreviewEventAction
+`DrawPreviewEventAction` describes the stage of the preview event.
+There are three options, all of which are up to the tool in question to interpret:
+
+For instance:
+- `'begin'` refers to the start of a preview action,
+- `'move'` refers to a change in the preview action,
+- `'end'` refers to the end of the preview action.
+
+When the `'end'` action is performed or received, all clients must discard every prior
+event until and including the `'begin'` action.
+
 ## TODOs
 
 - Add infinite canvas support
-- Rewrite implementation to uniquely tie each path element to a UUID
 - Fix Weighted Pen tool
-- Fix Selection tool
 - Improve efficiency on large canvases
 
 ## Contributors

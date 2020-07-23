@@ -2,7 +2,7 @@
 import paper from 'paper';
 
 import { log } from './utils';
-import { DrawingTool, Pen, DynamicPen, FountainPen, DrunkPen, Eraser, LaserPointer, Selector } from './DrawingTool';
+import { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector } from './DrawingTool';
 import { DrawingCanvas } from './DrawingCanvas';
 import { SocketServer } from './SocketServer';
 import { UI } from './UI';
@@ -25,7 +25,6 @@ window.onload = () => {
     new FountainPen(),
     new Eraser(),
     new LaserPointer(),
-    new DrunkPen(),
     new Selector()
   ];
 
