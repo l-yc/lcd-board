@@ -7,7 +7,8 @@ interface User {
 
 interface Room {
   users: string[];
-  whiteboard: Whiteboard;
+  whiteboard: DrawDataLinkedList;
+  cleanupTimeout?: ReturnType<typeof setTimeout>;
 }
 
 interface RoomInfo {
@@ -15,10 +16,20 @@ interface RoomInfo {
 };
 
 interface Whiteboard {
-  idOrder: string[];
-  drawDataRef: { [id: string]: DrawData };
+  drawDataList: DrawData[];
 }
 
+interface DrawDataLinkedList {
+  head: DrawDataLinkedNode | null,
+  tail: DrawDataLinkedNode | null,
+  idToNode: { [id: string]: DrawDataLinkedNode }
+}
+
+interface DrawDataLinkedNode {
+  prev: DrawDataLinkedNode | null,
+  element: DrawData,
+  next: DrawDataLinkedNode | null
+}
 
 
 
@@ -60,6 +71,9 @@ type DrawEventAction = "add" | "delete" | "change";
  * DrawData contains the minimally required JSON information to be drawn.
  * It simply has a reference to an id and the json draw data.
  *
+ * the id parameter is a GUID for the path.
+ * the aboveId parameter helps refer to setting or changing the relative z-index above another GUID.
+ *
  * json parameter important notes:
  *
  * - null represents draw data with nothing, i.e. draw no content.
@@ -70,10 +84,11 @@ type DrawEventAction = "add" | "delete" | "change";
  * if used in conjunction with 'add'    action, nothing happens.
  * if used in conjunction with 'change' action, the 'delete' action should be performed instead.
  *
- * the json parameter should be ignored by default if the action is 'delete'
+ * the replaceId and json parameter are ignored by default if the action is 'delete'..
  */
 interface DrawData {
   id: string,
+  aboveId?: string,
   json: string | null | undefined
 }
 /**
@@ -259,37 +274,68 @@ class SocketServer {
     }
 
     console.log('recording draw event %o', event);
-    switch (event.action) {
-      case "add":
-      for (let data of event.data) {
-        if (data.json === undefined) continue;
-        // adds a new element and sets the draw data.
-        room.whiteboard.idOrder.push(data.id);
-        room.whiteboard.drawDataRef[data.id] = data;
+    for (let data of event.data) {
+      // creates a new element and sets the draw data.
+      let node: DrawDataLinkedNode = {
+        prev: null,
+        element: data,
+        next: null
       }
-      break;
-      case "change":
-      for (let data of event.data) {
-        if (data.json === undefined) {
-          // perform deletion if json is undefined.
-          // idOrder param will be cleaned up later.
-          delete room.whiteboard.drawDataRef[data.id]
-          continue;
+      let oldNode = room.whiteboard.idToNode[data.id];
+
+      switch (event.action) {
+        case "add":
+        case "change":
+        if (data.json !== undefined) {
+          //insert node after the relevant previous node
+          let prevNode = (data.aboveId ? room.whiteboard.idToNode[data.aboveId] : undefined) || room.whiteboard.tail;
+          if (prevNode) {
+            let nextNode = prevNode.next;
+
+            node.prev = prevNode;
+            node.next = nextNode;
+
+            prevNode.next = node;
+
+            if (nextNode) {
+              nextNode.prev = node;
+            } else {
+              room.whiteboard.tail = node;
+            }
+          } else {
+            room.whiteboard.head = room.whiteboard.tail = node;
+          }
+          //reassign reference
+          room.whiteboard.idToNode[data.id] = node;
+
+          //passthrough to deletion of old node
+        } else {
+          // don't do anything if we're trying to add undefined
+          if (event.action == "add") break;
+
+          // passthrough to deletion if we're "changing" to undefined
         }
-        if (!room.whiteboard.drawDataRef[data.id]) {
-          // adds a new element if necessary or requested.
-          room.whiteboard.idOrder.push(data.id);
+
+        case "delete":
+        if (oldNode) {
+          //unlinks and removes old node
+          let oldNodePrev = oldNode.prev;
+          let oldNodeNext = oldNode.next;
+          if (oldNodePrev) oldNodePrev.next = oldNode.next;
+          if (oldNodeNext) oldNodeNext.prev = oldNode.prev;
+          if (room.whiteboard.head == oldNode)
+            room.whiteboard.head = oldNode.next;
+          if (room.whiteboard.tail == oldNode)
+            room.whiteboard.tail = oldNode.prev;
+
+          //delete reference entirely if not replaced on previous step
+          if (event.action == "delete" || data.json === undefined || data.id != oldNode.element.id) {
+            delete room.whiteboard.idToNode[data.id];
+          }
         }
-        // sets or replaces the draw data for said item.
-        room.whiteboard.drawDataRef[data.id] = data;
+        break;
       }
-      break;
-      case "delete": for (let data of event.data) {
-        // deletes the element in place.
-        // idOrder param will be cleaned up later.
-        delete room.whiteboard.drawDataRef[data.id]
-      }
-      break;
+      delete data.aboveId;
     }
   }
 
@@ -298,21 +344,15 @@ class SocketServer {
     if (!room) {
       throw 'Bad room id ' + roomId;
     }
-    this.doRoomWhiteboardMaintainance(roomId);
-    return room.whiteboard;
-  }
-
-  public doRoomWhiteboardMaintainance(roomId: string): void {
-    let room: Room | undefined = this.rooms.get(roomId);
-    if (room) {
-      let list = room.whiteboard.idOrder;
-      let len = list.length;
-      for (let i = len - 1; i >= 0; i--) {
-        if (room.whiteboard.drawDataRef[list[i]] === undefined) {
-          list.splice(i,1);
-        }
-      }
+    let whiteboard: Whiteboard = {
+      drawDataList: []
     }
+    let node = room.whiteboard.head;
+    while (node) {
+      whiteboard.drawDataList.push(node.element);
+      node = node.next;
+    }
+    return whiteboard;
   }
 
   public setUserRoom(socketId: string, room: string | null): void {
@@ -326,16 +366,23 @@ class SocketServer {
 
       this.broadcastRoomInfo(user.room);
 
+
       //auto cleanup if necessary
-      const userRoom = user.room;
-      setTimeout(() => this.deleteRoomIfEmpty(userRoom), 60000);
+      if (r.users.length == 0) {
+        //though this shouldn't happen, we reset the timeout timer if one exists.
+        if (r.cleanupTimeout) clearTimeout(r.cleanupTimeout);
+
+        //allow for a 5 minute buffer before cleaning up
+        const userRoom = user.room;
+        r.cleanupTimeout = setTimeout(() => this.deleteRoomIfEmpty(userRoom), 300000);
+      }
     }
 
     // join
     if (room) {
       let r: Room;
       if (!this.rooms.has(room)) {
-        r = { users: [], whiteboard: {idOrder: [], drawDataRef: {}} };
+        r = { users: [], whiteboard: {head: null, tail: null, idToNode: {}} };
         this.rooms.set(room, r);
       } else {
         r = this.rooms.get(room) as Room;
@@ -344,6 +391,11 @@ class SocketServer {
 
       this.broadcastRoomInfo(room);
 
+      //remove room cleanup timeout if one's set as someone has joined
+      if (r.cleanupTimeout) {
+        clearTimeout(r.cleanupTimeout);
+        delete r.cleanupTimeout;
+      }
     }
 
     // update user

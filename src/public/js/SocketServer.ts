@@ -48,17 +48,19 @@ export class SocketServer {
             // this will allow the websocket ample time to stay connected,
             // and provide a visual preview of the rendering process.
             //
-            let totalItems = whiteboard.idOrder.length;
+            let totalItems = whiteboard.drawDataList.length;
             let renderChunkSize = totalItems < 100 ? 10 : 100;
             let renderCount = 0;
 
             let asyncRender = (i: number) => {
               let handler = () => {
                 if (i < totalItems) {
-                  const id = whiteboard.idOrder[i];
-                  const item = whiteboard.drawDataRef[id];
-                  if (item !== undefined) {
-                    const paperItem = _canvas.drawJSONItem(id, item.json);
+                  const drawData = whiteboard.drawDataList[i];
+                  const id = drawData.id;
+                  const aboveId = drawData.aboveId;
+                  const itemJson = drawData.json;
+                  if (itemJson !== undefined) {
+                    const paperItem = _canvas.insertJSONItem(id, itemJson, aboveId);
                     renderCount++;
                   }
                   i++;

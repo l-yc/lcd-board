@@ -158,37 +158,34 @@ export class DrawingCanvas {
 
 
 
-  public drawJSONItem(id: string, json: string | null | undefined): paper.Item[] {
+  public insertJSONItem(id: string, json: string | null | undefined, aboveId?: string): paper.Item[] {
     if (!this.isGUID(id)) return [];
 
-    this.removeItemWithGUID(id);
-
     if (json === undefined) {
+      this.removeItemWithGUID(id);
       return [];
     }
 
-    if (json === null) {
-      let emptyPath = new paper.Path();
-      emptyPath.name = id;
-      return [emptyPath];
-    }
+    let oldI    = this.getItemWithGUID(id);
+    let bottomI = this.getItemWithGUID(aboveId);
+    let prevI = bottomI || oldI;
 
-    //FIXME: drawing order needs to be preserved if a previous element with said id exists.
-    //to debug, try using the eraser on overlapping lines.
-    //
-    //let oldI = this.getItemWithGUID(id);
-    //if (oldI) oldI.name = 'toBeRemoved';
+    let newIs = json === null ? [new paper.Path()] : this.expandItem(paper.project.activeLayer.importJSON(json));
 
-    let newIs = this.expandItem(paper.project.activeLayer.importJSON(json));
-
-    //
-    /*if (oldI) {
-      for (let newI of newIs) {
-        newI.insertAbove(oldI);
+    if (prevI != null) {
+      for (let item of newIs) {
+        this.setGUIDForItem(item.name, item);
+        item.insertAbove(prevI);
+        prevI = item;
       }
+    }
+    if (oldI) {
       (oldI as any).name = undefined;
       oldI.remove();
-    }*/
+    }
+    if (newIs.length == 1) {
+      newIs[0].name = id;
+    }
 
     return newIs;
   }
@@ -243,14 +240,14 @@ export class DrawingCanvas {
     item.name = id;
     return true;
   }
-  public hasItemWithGUID(id: string): boolean {
+  public hasItemWithGUID(id: string | undefined): boolean {
     return this.getItemWithGUID(id) != null;
   }
   public hasGUIDForItem(item: paper.Item | undefined): boolean {
     let ans = item ? this.getItemWithGUID(item.name) != null : false;
     return ans;
   }
-  public removeItemWithGUID(id: string) {
+  public removeItemWithGUID(id: string | undefined) {
     this.removeItem(this.getItemWithGUID(id))
   }
   public removeItem(item: paper.Item | undefined) {

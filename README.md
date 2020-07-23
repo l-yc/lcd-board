@@ -10,7 +10,7 @@
 
 This web app operates on the idea of rooms, where each room has a unique whiteboard. It allows multiple users to concurrently connect and draw in a room at any given point in time.
 
-As of now, room whiteboards are only persistent for as long as at least one user is connected to the room. If no one's connected to a room with a non-empty whiteboard, it'll be automatically discarded after 60 seconds.
+As of now, room whiteboards are only persistent for as long as at least one user is connected to the room. If no one's connected to a room with a non-empty whiteboard, it'll be automatically discarded after 5 minutes.
 
 The web app has quite a bit of drawing tools to choose from, and you can pick the color and size on supported tools. Following is a list of them:
 - Pen
@@ -202,8 +202,11 @@ There are three options, all of which are up to the tool in question to interpre
 DrawData contains the minimally required JSON information to be drawn.
 It simply has a reference to an `id` and the `json` draw data as a string.
 
-the `id` must be a GUID, and be correctly tagged with the GUID via the
+The `id` must be a GUID, and be correctly tagged with the GUID via the
 `DrawingCanvas.setGUIDForItem` method before utilising the paper.js path's JSON data.
+
+An optional parameter `aboveId` can be given in the cases for `'add'` and `'change'`
+actions, and the target `id` path will be added or moved to right above `aboveId`.
 
 PS: `json` parameter important notes:
 

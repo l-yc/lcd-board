@@ -195,13 +195,21 @@ class DrawingTool {
       }
     } else if (event.kind == "draw") {
       log({verbose: true}, this.id + ' handling draw event', event);
+
+      //process draw event
       let result = this.processDrawEvent(event);
+
+      //post draw event cleanup of preview path
+      for (let p of this.previewPathLog) {
+        p.remove();
+      }
+
+      //broadcast result if necessary
       if (result.broadcast && this.channel && !event.originUserId) {
         this.channel.sendEvent(event);
       }
     }
   }
-
 
   protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
 
@@ -239,13 +247,6 @@ class DrawingTool {
       this.previewPathLog.push(pointCircle);
     }
 
-    // cleanup once things end
-    if (event.action == "end") {
-      for (let p of this.previewPathLog) {
-        p.remove();
-      }
-    }
-
     return {success: true, broadcast: true, makeDrawEvent: event.action == "end"};
   }
 
@@ -278,7 +279,7 @@ class DrawingTool {
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (this.canvas) {
       for (let ele of event.data) {
-        this.canvas.drawJSONItem(ele.id, ele.json);
+        this.canvas.insertJSONItem(ele.id, ele.json, ele.aboveId);
       }
     }
     return {success: true, broadcast: true}
@@ -327,11 +328,6 @@ class Pen extends DrawingTool {
 
     // add a new point for the current location
     path.add(new paper.Point(event.point));
-
-    // cleanup once things end
-    if (event.action == "end") {
-      path.remove();
-    }
 
     return {success: true, broadcast: true, makeDrawEvent: event.action == "end"};
   }
@@ -608,15 +604,28 @@ class Eraser extends DrawingTool {
         newPath.remove();
         let newPaths = this.canvas.expandItem(newPath);
 
-        this.itemsToChange.push({id: oldId, json: null});
+        //process all new paths
+        let packets: DrawData[] = [];
+        let preserveOld = false;
         for (let path of newPaths) {
           let id = this.canvas.getGUIDForItem(path) || this.generateGUIDv4();
           this.canvas.setGUIDForItem(id, path);
-          path.remove();
+
+          if (id == oldId)
+            preserveOld = true;
+
           if (path.isEmpty())
-            this.itemsToChange.push({id: id, json: undefined});
+            this.itemsToChange.push({id: id, aboveId: oldId, json: undefined});
           else
-            this.itemsToChange.push({id: id, json: path.exportJSON({asString: true}) as string});
+            this.itemsToChange.push({id: id, aboveId: oldId, json: path.exportJSON({asString: true}) as string});
+        }
+
+        //add to cache list of things to change
+        for (let packet of packets) {
+          this.itemsToChange.push(packet)
+        }
+        if (!preserveOld) {
+          this.itemsToChange.push({id: oldId, json: undefined});
         }
       }
     }
@@ -642,7 +651,8 @@ class Eraser extends DrawingTool {
       if (event.action == "change") {
         for (let d of event.data) {
           //overrides old path item with new path item json
-          let items = this.canvas.drawJSONItem(d.id, d.json);
+          console.log('almost', d);
+          let items = this.canvas.insertJSONItem(d.id, d.json, d.aboveId);
           for (let item of items) {
             if (item.isEmpty()) {
               this.canvas.removeItem(item);
