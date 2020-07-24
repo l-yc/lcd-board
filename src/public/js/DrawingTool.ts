@@ -228,7 +228,9 @@ class DrawingTool {
 
       // connect it with the previous stroke by adding starting point at previous stroke.
       let l = this.drawPreviewEventLog.length;
-      subpath.add(new paper.Point(this.drawPreviewEventLog[l-1].point));
+      if (l != 0) {
+        subpath.add(new paper.Point(this.drawPreviewEventLog[l-1].point));
+      }
 
       // add a new point for the current location
       subpath.add(new paper.Point(event.point));
@@ -311,34 +313,39 @@ class Pen extends DrawingTool {
     let prevEvent = this.drawPreviewEventLog[this.drawPreviewEventLog.length - 1];
 
     // create new path only at the start of a stroke
-    if (event.action == 'begin' || !path) {
-      path = new paper.Path();
+    if (prevEvent && event.action != 'end') {
+      //remove old dot
+      if (prevEvent.action == "begin" && path) {
+        path.remove();
+        path = new paper.Path();
+      }
+      // apply settings
       path.strokeCap = 'round';
-      this.previewPathLog = [path];
-    }
-
-    // apply settings
-    path.strokeColor = color;
-    path.strokeWidth = size;
-
-    // connect it with the previous stroke by adding starting point at previous stroke.
-    if (prevEvent) {
+      path.strokeColor = color;
+      path.strokeWidth = size;
+      // connect it with the previous stroke by adding starting point at previous stroke.
       path.add(new paper.Point(prevEvent.point));
+      // add a new point for the current location
+      path.add(new paper.Point(event.point));
+      this.previewPathLog = [path];
+    } else if (event.action == 'begin') {
+      let pointCircle = new paper.Path.Circle(new paper.Point(event.point), size/2);
+      pointCircle.fillColor = color;
+      this.previewPathLog = [pointCircle];
     }
-
-    // add a new point for the current location
-    path.add(new paper.Point(event.point));
 
     return {success: true, broadcast: true, makeDrawEvent: event.action == "end"};
   }
 
   protected createDrawEventFromPreviewActivity(): DrawEvent {
-    let path = this.previewPathLog[0];
-    let orig = path.segments.length;
-    path.simplify();
-    let fina = path.segments.length;
-    let per = (orig-fina) / orig * 100.0;
-    log({verbose: true}, `Simplified segment count: ${orig} -> ${fina} (${per.toFixed(2)}% reduction)`);
+    if (this.drawPreviewEventLog.length > 2) {
+      let path = this.previewPathLog[0];
+      let orig = path.segments.length;
+      path.simplify();
+      let fina = path.segments.length;
+      let per = (orig-fina) / orig * 100.0;
+      log({verbose: true}, `Simplified segment count: ${orig} -> ${fina} (${per.toFixed(2)}% reduction)`);
+    }
 
     return super.createDrawEventFromPreviewActivity();
   }
