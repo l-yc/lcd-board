@@ -21,6 +21,7 @@ export class UI {
 
   constructor(canvas: DrawingCanvas) {
     this.drawingCanvas = canvas;
+    canvas.setUI(this);
 
     //initialize all html elements
     this.toolStatus   = document.getElementById('toolStatus');
@@ -288,8 +289,8 @@ export class UI {
       this.loginUsername = uname;
       this.loginRoom = room;
 
-      this.drawingCanvas?.getSocketServer()?.register(uname);
-      this.drawingCanvas?.getSocketServer()?.join(room);
+      this.drawingCanvas.getSocketServer()?.register(uname);
+      this.drawingCanvas.getSocketServer()?.join(room);
 
       submit.disabled = true;
       submit.value = "Loading...";
@@ -308,20 +309,30 @@ export class UI {
     const loginOverlay = document.getElementById('login-overlay');
     if (loginOverlay) {
       loginOverlay.style.opacity = '0';
-      setTimeout(function () {
+      setTimeout(() => {
         loginOverlay.style.display = 'none';
+        this.drawingCanvas.monitorKeyboardShortcuts = true;
       }, 250);
     }
   }
 
+  public showLoginOverlay() {
+    const loginOverlay = document.getElementById('login-overlay');
+    if (loginOverlay) {
+      loginOverlay.style.display = 'inline-block';
+      loginOverlay.style.opacity = '1';
+      this.drawingCanvas.monitorKeyboardShortcuts = false;
+    }
+  }
+
   public performLogout(options: {userInitiated?: boolean}) {
+    this.drawingCanvas.monitorKeyboardShortcuts = false;
     const loginOverlay = document.getElementById('login-overlay');
     if (loginOverlay) {
       const isAlreadyLoggedOut = loginOverlay.style.opacity != '0';
 
       if (!isAlreadyLoggedOut) {
-        loginOverlay.style.display = 'inline-block';
-        loginOverlay.style.opacity = '1';
+        this.showLoginOverlay()
 
         const usernameField = document.getElementById('usernameField') as HTMLInputElement;
         const roomField = document.getElementById('roomField') as HTMLInputElement;
@@ -332,13 +343,14 @@ export class UI {
           roomField.value = this.loginRoom || '';
         }
 
-        if (options && !options.userInitiated) {
-            alert('error: lost connection to the server');
-        }
         usernameField.disabled = false;
         roomField.disabled = false;
         submit.disabled = false;
         submit.value = "Login";
+
+        if (options && !options.userInitiated) {
+            alert('error: lost connection to the server');
+        }
       }
     }
   }

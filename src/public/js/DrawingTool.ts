@@ -1,6 +1,6 @@
 import paper from 'paper';
 
-import { log } from './utils';
+import { log, generateGUIDv4 } from './utils';
 
 import { DrawEvent, DrawPreviewEvent, DrawEventAction, DrawPreviewEventAction, DrawData } from '../../Socket';
 
@@ -157,6 +157,15 @@ class DrawingTool {
   protected previewPathLog: paper.Path[] = [];
   protected drawPreviewEventLog: DrawPreviewEvent[] = [];
   public handle(event: DrawEvent | DrawPreviewEvent) {
+    if (event.toolId != this.id && this.constructor != DrawingTool) {
+      let msg = 'warning: ' + this.id + ' cannot handle given event which is for ' + event.toolId;
+      if (event.action == "begin" || event.kind == "draw") {
+        log(msg);
+      } else {
+        log({verbose: true}, msg);
+      }
+      return;
+    }
     if (event.kind == "preview") {
       //log({verbose: true}, 'handling draw preview event', event);
       if (!event.adjustedSize) {
@@ -253,9 +262,7 @@ class DrawingTool {
   }
 
   protected generateGUIDv4(): string {
-    let u = Date.now().toString(16) + Math.random().toString(16) + '0'.repeat(16);
-    let guid = [u.substr(0,8), u.substr(8,4), '4000-8' + u.substr(13,3), u.substr(16,12)].join('-');
-    return guid;
+    return generateGUIDv4();
   }
   protected getAsDrawDataList(pathList: paper.Item[]): DrawData[] {
     if (this.canvas) {
@@ -280,9 +287,7 @@ class DrawingTool {
 
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (this.canvas) {
-      for (let ele of event.data) {
-        this.canvas.insertJSONItem(ele.id, ele.json, ele.aboveId);
-      }
+      this.canvas.processDrawEvent(event)
     }
     return {success: true, broadcast: true}
   }
@@ -513,15 +518,6 @@ class Selector extends DrawingTool {
     }
     return {success: true, broadcast: false, makeDrawEvent: false};
   };
-
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
-    if (event.action == "delete") {
-      for (let drawData of event.data) {
-        this.canvas?.removeItemWithGUID(drawData.id);
-      }
-    }
-    return {success: true, broadcast: true}
-  }
 }
 class Eraser extends DrawingTool {
 
@@ -546,6 +542,7 @@ class Eraser extends DrawingTool {
   }
 
   protected itemsToChange: DrawData[] = [];
+  protected initialStart: boolean = true;
   protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
     let point = event.point;
     let size = (event.adjustedSize || event.size)/2;
@@ -563,6 +560,7 @@ class Eraser extends DrawingTool {
     switch (event.action) {
       case 'begin':
         this.eraserPointer.sendToBack();
+        this.initialStart = true;
         break;
       case 'move':
         this.eraserPointer.position = new paper.Point(point);
@@ -571,6 +569,7 @@ class Eraser extends DrawingTool {
       case 'end':
         this.eraserPointer.remove();
         this.eraserPointer = null;
+        this.initialStart = true;
         return {success: true, broadcast: false, makeDrawEvent: false};
     }
 
@@ -587,7 +586,6 @@ class Eraser extends DrawingTool {
       }
     );
 
-    this.itemsToChange = [];
     let itemsAdded: {[id: string]: boolean} = {}
     for (let result of hitTestResult) {
       let item = result.item;
@@ -652,66 +650,21 @@ class Eraser extends DrawingTool {
     this.itemsToChange = [];
     return drawEvent;
   }
-
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (this.canvas) {
-      if (event.action == "change") {
-        for (let d of event.data) {
-          //overrides old path item with new path item json
-          console.log('almost', d);
-          let items = this.canvas.insertJSONItem(d.id, d.json, d.aboveId);
-          for (let item of items) {
-            if (item.isEmpty()) {
-              this.canvas.removeItem(item);
-            }
-          }
+      if (!event.originUserId) {
+        //merge undo events with previous if it's not first draw action
+        this.canvas.processDrawEvent(event, {mergeWithLastPastEvent: !this.initialStart});
+        //subsequent draw events aren't the first action any longer
+        if (this.initialStart) {
+          this.initialStart = false;
         }
+      } else {
+        this.canvas.processDrawEvent(event);
       }
     }
     return {success: true, broadcast: true}
   }
-
 }
 
-class JSONDrawingTool extends DrawingTool {
-  readonly hidden: boolean = true;
-  public constructor(id?: string) {
-    super('JSON Drawing Tool', id || 'MR_JASON');
-
-  }
-  public clone(id: string): JSONDrawingTool {
-    let newClone = new JSONDrawingTool(id);
-    newClone.canvas = this.canvas;
-    return newClone;
-  }
-  protected handleMouseEvent(event: any) {}
-  protected handleKeyEvent(event: any) {}
-  protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
-    return {success: false, broadcast: false, makeDrawEvent: false}
-  }
-  protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
-    if (this.canvas) {
-      for (let ele of event.data) {
-        this.canvas.importJSONData(ele.json);
-      }
-    }
-    return {success: true, broadcast: true}
-  }
-  public drawJSON(json: string) {
-    log('note: json drawing tool draw json method is not implemented')
-    /*
-    this.handle({
-      kind: "draw",
-      action: "add",
-      toolId: this.id,
-      data: [{id: this.generateGUIDv4(), json: json}],
-    });
-    */
-  }
-  public activate() {
-    log('warning: a JSONDrawingTool cannot be activated, it can only be utilised with the drawJSON method.')
-  }
-}
-
-
-export { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector, JSONDrawingTool };
+export { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector };

@@ -23,18 +23,30 @@ export class DrawingMember {
   }
 
   getDrawingTool(toolId?: string | null) {
-    if (toolId)
-      for (let tool of this.drawingTools)
-        if (tool.id == (this.id + "_" + toolId))
-            return tool;
-    log({verbose: true}, "warning: tool id is not found and thus the fallback tool is returned")
+    if (toolId) {
+      for (let tool of this.drawingTools) {
+        if (tool.id == (this.id + "_" + toolId)) {
+          return tool;
+        }
+      }
+      log({verbose: true}, "warning: tool id is not found and thus the fallback tool is returned")
+    }
     return this.fallbackDrawingTool;
   }
 
   handle(event: DrawEvent | DrawPreviewEvent) {
-    if (event.originUserId == this.id)
-      this.getDrawingTool(event.toolId).handle(event)
-    else
-      log({verbose: true}, "warning: the draw event provided does not originate from the drawing member in question. not handling.")
+    if (event.originUserId == this.id) {
+      let eventCopy = {...event};
+      let tool = this.getDrawingTool(eventCopy.toolId);
+      eventCopy.toolId = tool.id;
+      tool.handle(eventCopy)
+    } else {
+      let msg = "warning: the event provided does not originate from the drawing member in question. not handling."
+      if (event.kind == "draw") {
+        log(msg);
+      } else {
+        log({verbose: true}, msg)
+      }
+    }
   }
 }

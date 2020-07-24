@@ -1,15 +1,19 @@
 import paper from 'paper'
 
-import { log } from './utils';
+import { log, generateGUIDv4 } from './utils';
+import { DrawEvent, DrawEventAction, DrawData } from '../../Socket';
 import { SocketServer } from './SocketServer';
+import { UI } from './UI';
 import { DrawingMember } from './DrawingMember';
-import { DrawingTool, JSONDrawingTool } from './DrawingTool';
+import { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector } from './DrawingTool';
 
+// A class representing the drawing canvas
 export class DrawingCanvas {
   private drawingMembersMap: Map<string, DrawingMember> = new Map();
 
   private drawingTools: DrawingTool[] = [];
   private hiddenDrawingTools: DrawingTool[] = [];
+  private genericDrawingTool: DrawingTool;
   private activeDrawingToolIndex = 0;
 
   private drawingColors: string[] = [];
@@ -17,6 +21,7 @@ export class DrawingCanvas {
 
   readonly htmlCanvas: HTMLElement;
   private socketServer: SocketServer | null = null;
+  private ui: UI | null = null;
 
   public constructor(canvas: HTMLElement, tools?: DrawingTool[], colors?: string[]) {
     this.htmlCanvas = canvas;
@@ -24,9 +29,95 @@ export class DrawingCanvas {
     if (tools) this.addTools(tools);
     if (colors) this.addColors(colors);
 
-    this.addTools([new JSONDrawingTool()]);
+    this.genericDrawingTool = new DrawingTool('Basic Drawing Tool', 'BASIC');
 
     if (this.drawingTools) this.drawingTools[0].activate();
+
+    this.configureKeyboardShortcuts();
+  }
+
+  public monitorKeyboardShortcuts = false;
+  private keyboardShortcutHandler = (e: KeyboardEvent) => {
+    if (this.monitorKeyboardShortcuts) {
+      let shift = e.shiftKey ? 8 : 0;
+      let ctrl  = e.ctrlKey  ? 4 : 0;
+      let alt   = e.altKey   ? 2 : 0;
+      let meta  = e.metaKey  ? 1 : 0;
+      let mod = shift+ctrl+alt+meta;
+      let keyC = e.keyCode;
+
+      let isMacLike = /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform);
+
+      //ctrl+z or cmd+z
+      if ((mod == 4 && keyC == 90) || (isMacLike && mod == 1 && keyC == 90)) {
+        e.preventDefault();
+        this.undoLocalDrawEvent();
+        return;
+      }
+      //ctrl+y or cmd+shift+z
+      if ((mod == 4 && keyC == 89) || (isMacLike && mod == 9 && keyC == 90)) {
+        e.preventDefault();
+        this.redoLocalDrawEvent();
+        return;
+      }
+      //ctrl+alt+s or cmd+opt+s
+      //also overrides browser level ctrl+s or cmd+s
+      if (((mod == 4 || mod == 6) && keyC == 83) || (isMacLike && (mod == 1 || mod == 3) && keyC == 83)) {
+        e.preventDefault();
+        this.saveJSONToDisk();
+        return;
+      }
+      //ctrl+alt+o or cmd+opt+o
+      if ((mod == 6 && keyC == 79) || (isMacLike && mod == 3 && keyC == 79)) {
+        e.preventDefault();
+        this.loadJSONFromDisk();
+        return;
+      }
+      //ctrl+a or cmd+a
+      if ((mod == 4 && keyC == 65) || (isMacLike && mod == 1 && keyC == 65)) {
+        e.preventDefault();
+        let selector = this.getToolsIncludingHidden().find((x) => {return x.constructor == Selector});
+        if (selector) {
+          this.setActiveTool(selector);
+          if (this.ui) this.ui.configurePickers();
+          for (let c of paper.project.activeLayer.children) {
+            c.selected = true;
+          }
+        }
+        return;
+      }
+      //tool and color mappings
+      if (mod == 0) {
+        //tools
+        let target: any = null;
+        switch (keyC) {
+          case 80: target = Pen; break;
+          case 68: target = DynamicPen; break;
+          case 70: target = FountainPen; break;
+          case 69: case 88: target = Eraser; break;
+          case 76: target = LaserPointer; break;
+          case 83: target = Selector; break;
+        }
+        let tool = target ? this.getToolsIncludingHidden().find((x) => {return x.constructor == target}) : undefined;
+        if (tool) {
+          this.setActiveTool(tool);
+          if (this.ui) this.ui.configurePickers();
+          return;
+        }
+
+        //colors
+        let idx = (keyC - 49);
+        let colors = this.getColors();
+        if (idx >= 0 && idx < 9 && idx < colors.length) {
+          this.setActiveColor(colors[idx]);
+          if (this.ui) this.ui.configurePickers();
+          return;
+        }
+      }
+    }
+  };
+  public configureKeyboardShortcuts() {
+    document.addEventListener('keydown', this.keyboardShortcutHandler, false);
   }
 
   public clearWithAnimation(completion: () => void) {
@@ -40,7 +131,6 @@ export class DrawingCanvas {
 
   }
 
-
   public clear() {
     paper.project.clear();
   }
@@ -48,19 +138,47 @@ export class DrawingCanvas {
 
 
   public importJSONData(json: string | null | undefined) {
-    if (!json) return;
-    let _jsonTool: JSONDrawingTool | null = null;
-    for (let tool of this.getToolsIncludingHidden()) {
-      if (tool instanceof JSONDrawingTool) {
-        _jsonTool = tool;
+    if (json) {
+
+      log('importing json data', json);
+
+      //we make a new layer to import json to temporarily
+      let activeLayer = paper.project.activeLayer;
+      let newLayer = new paper.Layer([]);
+      activeLayer.activate();
+
+      newLayer.importJSON(json);
+
+      //we now construct a draw event based off the imported data
+      let event: DrawEvent = {
+        kind: "draw",
+        action: "add",
+        toolId: null,
+        data: []
       }
+      for (let item of newLayer.children) {
+        let id = generateGUIDv4();
+        item.name = id;
+        let json = item.isEmpty() ? null : item.exportJSON({asString: true}) as string;
+        let data: DrawData = {
+          id: id,
+          json: json
+        }
+        event.data.push(data);
+      }
+
+      //clear all the items that were temporarily set up
+      for (let item of newLayer.children) (item as any).name = undefined;
+
+      //remove the temporary layer
+      newLayer.remove();
+
+
+      //finally we perform the draw event and broadcast it
+      log('drawing imported json data');
+      this.processDrawEvent(event);
+      this.socketServer?.sendEvent(event);
     }
-    if (!_jsonTool) {
-      log("JSON drawing tool not found, can't import JSON!");
-      return;
-    }
-    const jsonTool = _jsonTool;
-    jsonTool.drawJSON(json);
   }
   public exportJSONData(): string {
     return paper.project.activeLayer.exportJSON({asString: true}) as string;
@@ -69,14 +187,25 @@ export class DrawingCanvas {
     return paper.project.activeLayer.exportSVG({asString: true}) as string;
   }
   public saveJSONToDisk() {
+    log('initiated json file saving');
     let a = document.createElement('a');
     let file = new Blob([this.exportJSONData()], {type: 'application/json'});
     a.href = URL.createObjectURL(file);
-    a.download = name;
+    a.download = 'drawing_' + (+ new Date()) + '.json';
+    a.click();
+  }
+  public saveSVGToDisk() {
+    log('initiated svg file saving');
+    let a = document.createElement('a');
+    let file = new Blob([this.exportSVGData()], {type: 'application/json'});
+    a.href = URL.createObjectURL(file);
+    a.download = 'drawing_' + (+ new Date()) + '.svg';
     a.click();
   }
   public loadJSONFromDisk() {
+    log('initiated json file loading');
     let fileInput = document.createElement("input");
+    fileInput.accept='.json'
     fileInput.type='file';
     fileInput.style.display='none';
     fileInput.onchange = (e: any) => {
@@ -91,7 +220,6 @@ export class DrawingCanvas {
             let contents = e.target.result;
 
             //imported contents
-            this.clear();
             this.importJSONData(contents);
 
             document.body.removeChild(fileInput)
@@ -100,8 +228,11 @@ export class DrawingCanvas {
         reader.readAsText(file)
       };
     };
+    console.log(fileInput);
     document.body.appendChild(fileInput);
+    fileInput.click();
   }
+
 
 
 
@@ -132,6 +263,7 @@ export class DrawingCanvas {
     let c: DrawingTool[] = [];
     for (let x of a) c.push(x);
     for (let x of b) c.push(x);
+    c.push(this.genericDrawingTool);
     return c;
   }
   public getColors(): string[] {
@@ -152,6 +284,212 @@ export class DrawingCanvas {
     for (let member of members) {
       this.drawingMembersMap.set(member.id, member);
       member.configureUsingDrawingTools(this.getToolsIncludingHidden());
+    }
+  }
+
+
+
+
+  public processDrawEvent(event: DrawEvent,
+                          options?: {
+                            preservePastFutureStack?: boolean,
+                            mergeWithLastPastEvent?: boolean,
+                          }) {
+
+    // helper variables to process undo/redo
+    let action = event.action;
+    let changes: {[id: string] : DrawData[]} = {};
+    let removes: string[] = [];
+    let changePastFuture = !options || !options.preservePastFutureStack; //i.e. whether to update undo/redo history
+    let mergeWithPast = options && options.mergeWithLastPastEvent; //i.e. merge with the previous draw event activity, s.t. undo performs them simultaneously.
+    let orderSnippet: {action: string, ids: string[]} = {action: action, ids: []};
+
+    if (changePastFuture && mergeWithPast) {
+      orderSnippet = this.pastLocalDrawDataOrder.pop() || orderSnippet;
+      if (action != orderSnippet.action) {
+        orderSnippet.action = "change";
+      }
+    }
+
+    // process drawevent's drawdata
+    for (let ele of event.data) {
+
+      // draw elements via json according to drawevent rules
+      if (event.action == "add" && ele.json === undefined) continue;
+
+      if (event.action != "delete") {
+        this.insertJSONItem(ele.id, ele.json, ele.aboveId);
+      } else {
+        this.insertJSONItem(ele.id, undefined, ele.aboveId);
+      }
+
+      // note for undo/redo processing later
+      if (changePastFuture) {
+        if (!event.originUserId) {
+          if (!changes[ele.id]) changes[ele.id] = [];
+          changes[ele.id].push(ele);
+        } else {
+          removes.push(ele.id);
+        }
+      }
+    }
+
+    // process for undo/redo later
+    if (changePastFuture) {
+      if (!event.originUserId) {
+
+        // add to undo history
+        let ids: string[] = orderSnippet.ids;
+        for (let id of Object.keys(changes)) {
+          if (!this.pastLocalDrawDataRef[id]) this.pastLocalDrawDataRef[id] = [];
+          this.pastLocalDrawDataRef[id].push(changes[id]);
+          ids.push(id);
+        }
+        this.pastLocalDrawDataOrder.push({action: event.action, ids: ids});
+
+        // cleanup undo history if necessary
+        let lOrder = this.pastLocalDrawDataOrder;
+        if (lOrder.length > 100) {
+          let removedList = lOrder.splice(0, lOrder.length - 100);
+          let idRemoveCount: {[id: string]: number} = {}
+          for (let removed of removedList) {
+            for (let id of removed.ids) {
+              if (!idRemoveCount[id]) idRemoveCount[id] = 0;
+              idRemoveCount[id]++;
+            }
+          }
+          for (let id of Object.keys(idRemoveCount)) {
+            let n = idRemoveCount[id];
+            if (n - 1 > 0) {
+              // only perform n-1 removals so as when the system
+              // performs an undo it can can refer to the previous
+              // draw action step to undo to
+              this.pastLocalDrawDataRef[id].splice(0, n - 1);
+            }
+          }
+        }
+
+        // clear redo history after performing a drawevent
+        // since we have "switched" timelines.
+        this.futureLocalDrawDataRef = {};
+        this.futureLocalDrawDataOrder = [];
+
+      } else {
+        for (let id of removes) {
+          // we completely remove the references to ids
+          // where drawevents from other origins have overriden.
+          //
+          // this effectively prevents any undos or redos to sections
+          // where others disrupted the local undo/redo history.
+          delete this.pastLocalDrawDataRef[id];
+          delete this.futureLocalDrawDataRef[id];
+        }
+      }
+    }
+  }
+
+
+
+
+  private pastLocalDrawDataOrder   : {action: DrawEventAction, ids: string[]}[] = []
+  private futureLocalDrawDataOrder : {action: DrawEventAction, ids: string[]}[] = []
+  private pastLocalDrawDataRef   : {[id: string] : DrawData[][] } = {}
+  private futureLocalDrawDataRef : {[id: string] : DrawData[][] } = {}
+  public canUndoLocalDrawEvent(): boolean {
+    let changesToUndo = this.pastLocalDrawDataOrder[this.pastLocalDrawDataOrder.length - 1];
+    if (changesToUndo) {
+      for (let id of changesToUndo.ids) {
+        if (!this.pastLocalDrawDataRef[id]) {
+          this.pastLocalDrawDataRef = {}
+          this.pastLocalDrawDataOrder = [];
+          return false;
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+  public canRedoLocalDrawEvent(): boolean {
+    let changesToRedo = this.futureLocalDrawDataOrder[this.futureLocalDrawDataOrder.length - 1];
+    if (changesToRedo) {
+      for (let id of changesToRedo.ids) {
+        if (!this.futureLocalDrawDataRef[id]) {
+          this.futureLocalDrawDataRef = {}
+          this.futureLocalDrawDataOrder = [];
+          return false;
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+  public undoLocalDrawEvent() {
+    if (!this.canUndoLocalDrawEvent()) return;
+
+    let changesToUndo = this.pastLocalDrawDataOrder.pop();
+    if (changesToUndo) {
+      let undoingAction = changesToUndo.action;
+      let drawEvent: DrawEvent = {
+        kind: "draw",
+        action: undoingAction == "add" ? "delete" : (undoingAction == "delete" ? "add" : "change"),
+        toolId: null,
+        data: []
+      }
+      for (let id of changesToUndo.ids.reverse()) {
+        let list = this.pastLocalDrawDataRef[id];
+        let last = list ? list.pop() : undefined;
+        if (!last) continue;
+        let actionsReversed: DrawData[] = [...last].reverse();
+        let nextLast = list[list.length-1] || [];
+        actionsReversed.push(nextLast[nextLast.length-1] || {id: id});
+
+        for (let i = 1; i < actionsReversed.length; i++) {
+          let copy = {...actionsReversed[i]};
+          drawEvent.data.push(copy);
+        }
+
+        if (!list) delete this.pastLocalDrawDataRef[id];
+
+        if (!this.futureLocalDrawDataRef[id]) this.futureLocalDrawDataRef[id] = [];
+        this.futureLocalDrawDataRef[id].push(last);
+      }
+
+      this.futureLocalDrawDataOrder.push(changesToUndo);
+      this.processDrawEvent(drawEvent, {preservePastFutureStack: true})
+      this.socketServer?.sendEvent(drawEvent);
+    }
+  }
+  public redoLocalDrawEvent() {
+    if (!this.canRedoLocalDrawEvent()) return;
+
+    let changesToRedo = this.futureLocalDrawDataOrder.pop();
+    if (changesToRedo) {
+      let redoingAction = changesToRedo.action;
+      let drawEvent: DrawEvent = {
+        kind: "draw",
+        action: redoingAction,
+        toolId: null,
+        data: []
+      }
+      for (let id of changesToRedo.ids) {
+        let list = this.futureLocalDrawDataRef[id];
+        let last = list ? list.pop() : undefined;
+        if (!last) continue;
+        let actions: DrawData[] = [...last];
+
+        for (let i = 0; i < actions.length; i++) {
+          let copy = {...actions[i]};
+          drawEvent.data.push(copy);
+        }
+
+        if (!list) delete this.futureLocalDrawDataRef[id];
+
+        if (!this.pastLocalDrawDataRef[id]) this.pastLocalDrawDataRef[id] = [];
+        this.pastLocalDrawDataRef[id].push(last);
+      }
+      this.pastLocalDrawDataOrder.push(changesToRedo);
+      this.processDrawEvent(drawEvent, {preservePastFutureStack: true});
+      this.socketServer?.sendEvent(drawEvent);
     }
   }
 
@@ -279,13 +617,23 @@ export class DrawingCanvas {
     return this.activeColor;
   }
 
+
+
+
   public setSocketServer(sock: SocketServer) {
     this.socketServer = sock;
-    for (let tool of this.drawingTools) {
+    for (let tool of this.getToolsIncludingHidden()) {
       tool.channel = this.socketServer;
     }
   }
   public getSocketServer(): SocketServer | null {
     return this.socketServer;
+  }
+
+  public setUI(ui: UI) {
+    this.ui = ui;
+  }
+  public getUI(ui: UI | null) {
+    return this.ui;
   }
 }

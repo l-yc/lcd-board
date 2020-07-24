@@ -56,7 +56,7 @@ interface DrawEvent {
   kind: "draw",
   originUserId?: string,
   action: DrawEventAction,
-  toolId: string,
+  toolId: string | null,
   data: DrawData[]
 }
 /**
