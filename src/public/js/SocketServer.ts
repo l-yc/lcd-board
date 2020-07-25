@@ -4,7 +4,7 @@ import paper from 'paper';
 
 import { log } from './utils';
 
-import { Whiteboard, BoardEvent } from '../../Socket';
+import { Whiteboard, BoardEvent, DrawEvent } from '../../Socket';
 import { UI } from './UI';
 import { DrawingTool } from './DrawingTool';
 
@@ -43,40 +43,13 @@ export class SocketServer {
         if (currentUserMemberObj) {
           _canvas.clearWithAnimation(() => {
 
-            //
-            // render in chunks for every 100 items.
-            // this will allow the websocket ample time to stay connected,
-            // and provide a visual preview of the rendering process.
-            //
-            let totalItems = whiteboard.drawDataList.length;
-            let renderChunkSize = totalItems < 100 ? 10 : 100;
-            let renderCount = 0;
-
-            let asyncRender = (i: number) => {
-              let handler = () => {
-                if (i < totalItems) {
-                  const drawData = whiteboard.drawDataList[i];
-                  const id = drawData.id;
-                  const aboveId = drawData.aboveId;
-                  const itemJson = drawData.json;
-                  if (itemJson !== undefined) {
-                    const paperItem = _canvas.insertJSONItem(id, itemJson, aboveId);
-                    renderCount++;
-                  }
-                  i++;
-                  if (renderCount % renderChunkSize == 0) {
-                    renderCount++;
-                    asyncRender(i);
-                  } else {
-                    handler();
-                  }
-                } else {
-                  setTimeout(() => {_ui.hideLoginOverlay();}, 10);
-                }
-              }
-              setTimeout(handler, 1);
+            let drawEvent: DrawEvent = {
+              kind: "draw",
+              action: "add",
+              toolId: null,
+              data: whiteboard.drawDataList
             }
-            asyncRender(0);
+            _canvas.processDrawEventAsync(drawEvent, () => {_ui.hideLoginOverlay();}, {preservePastFutureStack: true});
           });
         }
       }
@@ -142,5 +115,9 @@ export class SocketServer {
 
   getUserId() {
     return this.socket.id;
+  }
+
+  getRoom() {
+    return this.room;
   }
 };

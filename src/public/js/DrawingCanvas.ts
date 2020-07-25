@@ -142,41 +142,27 @@ export class DrawingCanvas {
 
       log('importing json data', json);
 
-      //we make a new layer to import json to temporarily
-      let activeLayer = paper.project.activeLayer;
-      let newLayer = new paper.Layer([]);
-      activeLayer.activate();
-
-      newLayer.importJSON(json);
-
-      //we now construct a draw event based off the imported data
+      //we construct a draw event based off the imported data
       let event: DrawEvent = {
         kind: "draw",
         action: "add",
         toolId: null,
         data: []
       }
-      for (let item of newLayer.children) {
+
+      for (let item of JSON.parse(json)[1]['children']) {
         let id = generateGUIDv4();
-        item.name = id;
-        let json = item.isEmpty() ? null : item.exportJSON({asString: true}) as string;
-        let data: DrawData = {
+        item[1]['name'] = id;
+        let drawData: DrawData = {
           id: id,
-          json: json
+          json: JSON.stringify(item)
         }
-        event.data.push(data);
+        event.data.push(drawData);
       }
-
-      //clear all the items that were temporarily set up
-      for (let item of newLayer.children) (item as any).name = undefined;
-
-      //remove the temporary layer
-      newLayer.remove();
-
 
       //finally we perform the draw event and broadcast it
       log('drawing imported json data');
-      this.processDrawEvent(event);
+      this.processDrawEventAsync(event, () => {});
       this.socketServer?.sendEvent(event);
     }
   }
@@ -191,7 +177,13 @@ export class DrawingCanvas {
     let a = document.createElement('a');
     let file = new Blob([this.exportJSONData()], {type: 'application/json'});
     a.href = URL.createObjectURL(file);
-    a.download = 'drawing_' + (+ new Date()) + '.json';
+    let room = this.socketServer?.getRoom()
+    let date = new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString();
+    if (room) {
+      a.download = room + ' ' + date + '.json';
+    } else {
+      a.download = 'drawing ' + date + '.json';
+    }
     a.click();
   }
   public saveSVGToDisk() {
@@ -217,10 +209,13 @@ export class DrawingCanvas {
         var reader = new FileReader();
         reader.onload = (e: any) => {
           if (e.target) {
+            //import contents
             let contents = e.target.result;
-
-            //imported contents
-            this.importJSONData(contents);
+            try {
+              this.importJSONData(contents);
+            } catch (e) {
+              window.alert("ERROR: lcd-board could not load the file correctly. Are you sure it's a valid lcd-board exported json file?");
+            }
 
             document.body.removeChild(fileInput)
           };
@@ -288,14 +283,65 @@ export class DrawingCanvas {
   }
 
 
+  private asyncRenderInProgress = false;
+  private postAsyncRenderSyncQueue: [DrawEvent, any][] = [];
+  public processDrawEventAsync(event: DrawEvent, completion: () => void, options?: {preservePastFutureStack?: boolean}) {
+    // render in chunks for every 100 items.
+    // this will allow the websocket ample time to stay connected,
+    // and provide a visual preview of the rendering process.
+    this.asyncRenderInProgress = true;
+    let drawDataList = [...event.data];
+    let totalItems = event.data.length;
+    let renderChunkSize = totalItems < 50 ? 10 : 50;
 
+    let splitDrawEvents: DrawEvent[] =[]
+    while (drawDataList.length > 0) {
+      splitDrawEvents.push({
+        kind: "draw",
+        originUserId: event.originUserId,
+        action: event.action,
+        toolId: event.toolId,
+        data: drawDataList.splice(0, renderChunkSize)
+      })
+    }
+
+    let asyncRender = (i: number) => {
+      let handler = () => {
+        if (i < splitDrawEvents.length) {
+          this.processDrawEvent(splitDrawEvents[i], {
+            preservePastFutureStack: options?.preservePastFutureStack,
+            mergeWithLastPastEvent: i > 0,
+            doNotWaitAsyncTask: true
+          });
+          asyncRender(i + 1);
+        } else {
+          while (this.postAsyncRenderSyncQueue.length > 0) {
+            let args = this.postAsyncRenderSyncQueue.splice(0,1)[0];
+            args[1].doNotWaitAsyncTask = true;
+            this.processDrawEvent(args[0], args[1]);
+          }
+          this.asyncRenderInProgress = false;
+          setTimeout(() => {completion()}, 10);
+          return;
+        }
+      }
+      setTimeout(handler, 1);
+    }
+    asyncRender(0);
+  }
 
   public processDrawEvent(event: DrawEvent,
                           options?: {
                             preservePastFutureStack?: boolean,
                             mergeWithLastPastEvent?: boolean,
+                            doNotWaitAsyncTask?: boolean,
                           }) {
 
+    // if async render is in progress, wait it out unless overriden.
+    if (this.asyncRenderInProgress && (!options || !options.doNotWaitAsyncTask)) {
+      this.postAsyncRenderSyncQueue.push([event, options]);
+      return;
+    }
     // helper variables to process undo/redo
     let action = event.action;
     let changes: {[id: string] : DrawData[]} = {};

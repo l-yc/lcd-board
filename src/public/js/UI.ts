@@ -100,7 +100,7 @@ export class UI {
     for (let userId in info.users) {
       if (!info.users.hasOwnProperty(userId)) return;
 
-      if (canvas) drawingMembers.push(new DrawingMember(userId, info.users[userId]));
+      if (canvas) drawingMembers.push(new DrawingMember(userId, info.users[userId], canvas));
 
       let u = document.createElement('span');
       u.innerText = info.users[userId].username as string;

@@ -2,23 +2,29 @@ import { log } from './utils';
 
 import { User, DrawEvent, DrawPreviewEvent } from '../../Socket';
 import { DrawingTool } from './DrawingTool';
+import { DrawingCanvas } from './DrawingCanvas';
 
 export class DrawingMember {
   readonly id: string;
   private user: User;
+  private canvas: DrawingCanvas;
   private fallbackDrawingTool: DrawingTool;
   private drawingTools: DrawingTool[] = [];
 
-  constructor(id: string, user: User) {
+  constructor(id: string, user: User, canvas: DrawingCanvas) {
     this.id = id;
     this.user = user;
-    this.fallbackDrawingTool = new DrawingTool(user.username || id, id);
+    this.canvas = canvas
+    this.fallbackDrawingTool = new DrawingTool((user.username || id), id + "_FALLBACK");
+    this.fallbackDrawingTool.canvas = canvas;
   }
 
   configureUsingDrawingTools(tools: DrawingTool[]) {
     this.drawingTools = [];
     for (let tool of tools) {
-      this.drawingTools.push(tool.clone(this.id + "_" + tool.id));
+      let clone = tool.clone(this.id + "_" + tool.id);
+      clone.canvas = this.canvas;
+      this.drawingTools.push(clone);
     }
   }
 

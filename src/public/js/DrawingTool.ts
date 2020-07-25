@@ -59,7 +59,7 @@ class DrawingTool {
   public clone(id: string): DrawingTool {
     let newClone = new DrawingTool(this.name, id || this.id);
     newClone.size = this.size;
-    newClone.canvas = this.canvas;
+
     return newClone;
   }
 
@@ -287,7 +287,9 @@ class DrawingTool {
 
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (this.canvas) {
-      this.canvas.processDrawEvent(event)
+      this.canvas.processDrawEvent(event);
+    } else {
+      log("warning: " + this.id + " can't perform DrawEvents as a drawing canvas is not linked!")
     }
     return {success: true, broadcast: true}
   }
@@ -304,7 +306,7 @@ class Pen extends DrawingTool {
   public clone(id: string): Pen {
     let newClone = new Pen(id);
     newClone.size = this.size;
-    newClone.canvas = this.canvas;
+
     return newClone;
   }
   protected shouldAutoAdjustSizeToFactor(): boolean {
@@ -363,7 +365,7 @@ class DynamicPen extends DrawingTool {
   public clone(id: string): DynamicPen {
     let newClone = new DynamicPen(id);
     newClone.size = this.size;
-    newClone.canvas = this.canvas;
+
     return newClone;
   }
   protected pressureSensitive = true;
@@ -376,7 +378,7 @@ class FountainPen extends DrawingTool {
   public clone(id: string): FountainPen {
     let newClone = new FountainPen(id);
     newClone.size = this.size;
-    newClone.canvas = this.canvas;
+
     return newClone;
   }
   protected shouldAutoAdjustSizeToFactor(): boolean {
@@ -409,7 +411,7 @@ class LaserPointer extends DrawingTool {
   public clone(id: string): LaserPointer {
     let newClone = new LaserPointer(id);
     newClone.size = this.size;
-    newClone.canvas = this.canvas;
+
     return newClone;
   }
 
@@ -456,7 +458,7 @@ class Selector extends DrawingTool {
 
   public clone(id: string): Selector {
     let newClone = new Selector(id);
-    newClone.canvas = this.canvas;
+
     return newClone;
   }
 
@@ -533,7 +535,7 @@ class Eraser extends DrawingTool {
   public clone(id: string): Eraser {
     let newClone = new Eraser(id);
     newClone.size = this.size;
-    newClone.canvas = this.canvas;
+
     return newClone;
   }
 
