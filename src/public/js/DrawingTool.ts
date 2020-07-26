@@ -40,6 +40,7 @@ class DrawingTool {
     let tool = new paper.Tool();
 
     this.tool = tool;
+    this.tool.minDistance = 1;
 
     // Define mouse events handlers
     tool.onMouseDown = this.handleMouseEvent.bind(this);
@@ -154,7 +155,7 @@ class DrawingTool {
     }
   }
 
-  protected previewPathLog: paper.Path[] = [];
+  protected previewPath: paper.Path | null = null;
   protected drawPreviewEventLog: DrawPreviewEvent[] = [];
   public handle(event: DrawEvent | DrawPreviewEvent) {
     if (event.toolId != this.id && this.constructor != DrawingTool) {
@@ -179,7 +180,7 @@ class DrawingTool {
       if (event.action == "begin") {
         // we do some setup when a draw action starts
         this.drawPreviewEventLog = [];
-        this.previewPathLog = [];
+        this.previewPath = null;
       }
 
       let result = this.processDrawPreviewEvent(event);
@@ -209,9 +210,7 @@ class DrawingTool {
       let result = this.processDrawEvent(event);
 
       //post draw event cleanup of preview path
-      for (let p of this.previewPathLog) {
-        p.remove();
-      }
+      if (this.previewPath) this.previewPath.remove();
 
       //broadcast result if necessary
       if (result.broadcast && this.channel && !event.originUserId) {
@@ -226,36 +225,63 @@ class DrawingTool {
     let color = new paper.Color(event.color);
     let size = event.adjustedSize || event.size;
 
-    if (event.action != "begin") {
+    let prevEvent = this.drawPreviewEventLog[this.drawPreviewEventLog.length - 1];
+    if (prevEvent && event.point != prevEvent.point) {
       // create new path for each line segment between two draw events
-      let subpath = new paper.Path();
-      subpath.strokeCap = 'round';
+      let path = this.previewPath;
+      if (event.action == "move") {
+        if (this.drawPreviewEventLog.length == 1 || !path) {
+          //if there's only one previous event, it's a circle.
+          //we'll remove it and change it to our dynamic stroke.
+          let newPath = new paper.Path();
+          newPath.fillColor = color;
 
-      // apply settings
-      subpath.strokeColor = color;
-      subpath.strokeWidth = size;
+          if (path) {
+            let pos = path.position;
+            path.remove();
+            newPath.add(pos);
+          }
 
-      // connect it with the previous stroke by adding starting point at previous stroke.
-      let l = this.drawPreviewEventLog.length;
-      if (l != 0) {
-        subpath.add(new paper.Point(this.drawPreviewEventLog[l-1].point));
+          path = newPath;
+        }
+
+        //we compute the "width" of the stroke and draw it manually
+        let middlePt = new paper.Point({x: (event.point.x + prevEvent.point.x)/2, y: (event.point.y + prevEvent.point.y)/2});
+        let step = new paper.Point({x: event.point.x - prevEvent.point.x, y: event.point.y - prevEvent.point.y})
+        step.angle += 90;
+        let rescale = (size/2)/Math.sqrt(step.x*step.x + step.y*step.y)
+        step.x *= rescale;
+        step.y *= rescale;
+
+        let top = middlePt.add(step);
+        let bottom = middlePt.subtract(step);
+        path.add(top);
+        path.insert(0, bottom);
+
+        //do some final smoothing
+        path.smooth();
+
+      } else if (event.action == "end" && this.drawPreviewEventLog.length > 1 && path) {
+        // add a new point for the current location to end it off
+        path.add(new paper.Point(event.point));
+
+        //close the path up
+        path.closed = true;
+
+        //smooth it out and simplify
+        path.smooth();
+        path.simplify();
       }
 
-      // add a new point for the current location
-      subpath.add(new paper.Point(event.point));
+      this.previewPath = path;
 
-      // add to list of preview paths
-      this.previewPathLog.push(subpath);
     } else {
-      //reset preview path log since this is new
-      this.previewPathLog = [];
 
-      // configure a single circular point since there're no previous draw preview events
+      // configure a single circular 'dot' since there're no previous draw preview events
       let pointCircle = new paper.Path.Circle(new paper.Point(event.point), size/2);
       pointCircle.fillColor = color;
-
-      // add to list of preview paths
-      this.previewPathLog.push(pointCircle);
+      this.tool.minDistance = size/2;
+      this.previewPath = pointCircle;
     }
 
     return {success: true, broadcast: true, makeDrawEvent: event.action == "end"};
@@ -281,7 +307,7 @@ class DrawingTool {
       kind: "draw",
       action: "add",
       toolId: this.id,
-      data: this.getAsDrawDataList(this.previewPathLog)
+      data: this.getAsDrawDataList(this.previewPath ? [this.previewPath] : [])
     }
   }
 
@@ -313,7 +339,7 @@ class Pen extends DrawingTool {
     return true;
   }
   protected processDrawPreviewEvent(event: DrawPreviewEvent): DrawPreviewEventProcessingResult {
-    let path = this.previewPathLog[0];
+    let path = this.previewPath;
     let color = new paper.Color(event.color);
     let size = event.adjustedSize || event.size;
 
@@ -322,23 +348,31 @@ class Pen extends DrawingTool {
     // create new path only at the start of a stroke
     if (prevEvent && event.action != 'end') {
       //remove old dot
-      if (prevEvent.action == "begin" && path) {
-        path.remove();
+      if (this.drawPreviewEventLog.length == 1 || !path) {
+        // use the original circle as a starting point,
+        // remove it and replace with a proper path
+        if (path) path.remove();
         path = new paper.Path();
+        path.strokeCap = 'round';
+        path.strokeColor = color;
+        path.strokeWidth = size;
+        this.previewPath = path;
+
+        path.add(new paper.Point(prevEvent.point));
       }
-      // apply settings
-      path.strokeCap = 'round';
-      path.strokeColor = color;
-      path.strokeWidth = size;
-      // connect it with the previous stroke by adding starting point at previous stroke.
-      path.add(new paper.Point(prevEvent.point));
-      // add a new point for the current location
-      path.add(new paper.Point(event.point));
-      this.previewPathLog = [path];
+      if (prevEvent.point != event.point) {
+        // add a new point for the current location if necessary
+        path.add(new paper.Point(event.point));
+      }
+
+      //smoothen the path
+      path.smooth();
+
     } else if (event.action == 'begin') {
+      //draw a dot for the initial point
       let pointCircle = new paper.Path.Circle(new paper.Point(event.point), size/2);
       pointCircle.fillColor = color;
-      this.previewPathLog = [pointCircle];
+      this.previewPath = pointCircle;
     }
 
     return {success: true, broadcast: true, makeDrawEvent: event.action == "end"};
@@ -346,12 +380,14 @@ class Pen extends DrawingTool {
 
   protected createDrawEventFromPreviewActivity(): DrawEvent {
     if (this.drawPreviewEventLog.length > 2) {
-      let path = this.previewPathLog[0];
-      let orig = path.segments.length;
-      path.simplify();
-      let fina = path.segments.length;
-      let per = (orig-fina) / orig * 100.0;
-      log({verbose: true}, `Simplified segment count: ${orig} -> ${fina} (${per.toFixed(2)}% reduction)`);
+      let path = this.previewPath;
+      if (path) {
+        let orig = path.segments.length;
+        path.simplify(0.5);
+        let fina = path.segments.length;
+        let per = (orig-fina) / orig * 100.0;
+        log({verbose: true}, `Simplified segment count: ${orig} -> ${fina} (${per.toFixed(2)}% reduction)`);
+      }
     }
 
     return super.createDrawEventFromPreviewActivity();
@@ -401,7 +437,7 @@ class LaserPointer extends DrawingTool {
   protected pointer: paper.Path.Circle | null = null;
 
   readonly minSize: number = 10;
-  protected size: number = 10;
+  protected size: number = 20;
   readonly maxSize: number = 40;
 
   public constructor(id?: string) {
@@ -501,8 +537,8 @@ class Selector extends DrawingTool {
       case 'move':
         let rect = this.selectionBox;
 
-        rect.segments[0].point.y = event.point.y;              // lower left point
         //rect.segments[1].point // upper left point
+        rect.segments[0].point.y = event.point.y;              // lower left point
         rect.segments[2].point.x = event.point.x;              // upper right point
         rect.segments[3].point = new paper.Point(event.point); // lower right point
 
@@ -607,7 +643,7 @@ class Eraser extends DrawingTool {
         itemsAdded[oldId] = true;
 
         // we create a new path by subtracting the eraser pointer
-        let newPath = oldPath.subtract(this.eraserPointer, {trace: false});
+        let newPath = oldPath.subtract(this.eraserPointer, {trace: oldPath.hasFill()});
         newPath.remove();
         let newPaths = this.canvas.expandItem(newPath);
 

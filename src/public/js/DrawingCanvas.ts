@@ -587,6 +587,12 @@ export class DrawingCanvas {
           parent.addChild(o);
           o.insertAbove(item);
         }
+        if (o instanceof paper.Path && item instanceof paper.CompoundPath) {
+          let par = (item as paper.CompoundPath);
+          let chi = (o as paper.Path);
+          chi.fillColor = par.fillColor;
+          chi.strokeColor = par.strokeColor;
+        }
       }
       item.remove();
     } else {
