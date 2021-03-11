@@ -67,6 +67,12 @@ export class DrawingCanvas {
         this.saveJSONToDisk();
         return;
       }
+      //shift+ctrl+alt+s or shift+cmd+opt+s
+      if (((mod == 12 || mod == 14) && keyC == 83) || (isMacLike && (mod == 9 || mod == 11) && keyC == 83)) {
+        e.preventDefault();
+        this.saveSVGToDisk();
+        return;
+      }
       //ctrl+alt+o or cmd+opt+o
       if ((mod == 6 && keyC == 79) || (isMacLike && mod == 3 && keyC == 79)) {
         e.preventDefault();
@@ -191,7 +197,13 @@ export class DrawingCanvas {
     let a = document.createElement('a');
     let file = new Blob([this.exportSVGData()], {type: 'application/json'});
     a.href = URL.createObjectURL(file);
-    a.download = 'drawing_' + (+ new Date()) + '.svg';
+    let room = this.socketServer?.getRoom()
+    let date = new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString();
+    if (room) {
+      a.download = room + ' ' + date + '.svg';
+    } else {
+      a.download = 'drawing ' + date + '.svg';
+    }
     a.click();
   }
   public loadJSONFromDisk() {
