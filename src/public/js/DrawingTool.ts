@@ -2,7 +2,7 @@ import paper from 'paper';
 
 import { log, generateGUIDv4 } from './utils';
 
-import { DrawEvent, DrawPreviewEvent, DrawEventAction, DrawPreviewEventAction, DrawData } from '../../Socket';
+import { DrawEvent, DrawPreviewEvent, DrawEventAction, DrawPreviewEventAction, DrawData } from '../../types';
 
 import { SocketServer } from './SocketServer';
 import { DrawingCanvas } from './DrawingCanvas';

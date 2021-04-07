@@ -1,17 +1,17 @@
 import { log } from './utils';
 
-import { User, DrawEvent, DrawPreviewEvent } from '../../Socket';
+import { LegacyUser, DrawEvent, DrawPreviewEvent } from '../../types';
 import { DrawingTool } from './DrawingTool';
 import { DrawingCanvas } from './DrawingCanvas';
 
 export class DrawingMember {
   readonly id: string;
-  private user: User;
+  private user: LegacyUser;
   private canvas: DrawingCanvas;
   private fallbackDrawingTool: DrawingTool;
   private drawingTools: DrawingTool[] = [];
 
-  constructor(id: string, user: User, canvas: DrawingCanvas) {
+  constructor(id: string, user: LegacyUser, canvas: DrawingCanvas) {
     this.id = id;
     this.user = user;
     this.canvas = canvas

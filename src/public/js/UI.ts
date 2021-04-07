@@ -1,9 +1,11 @@
-import { RoomInfo } from '../../Socket';
+import { LegacyRoomInfo } from '../../types';
 
 import { DrawingCanvas } from './DrawingCanvas';
 import { DrawingMember } from './DrawingMember';
 
 import { DrawingTool, Eraser } from './DrawingTool';
+
+import { getCookie } from './utils';
 
 export class UI {
 
@@ -88,8 +90,8 @@ export class UI {
   }
 
 
-  private cachedRoomInfo: RoomInfo | null = null;
-  public updateRoomInfo(info: RoomInfo) {
+  private cachedRoomInfo: LegacyRoomInfo | null = null;
+  public updateRoomInfo(info: LegacyRoomInfo) {
     if (!this.membersContainer) return;
 
     const canvas = this.drawingCanvas;
@@ -276,8 +278,11 @@ export class UI {
     const usernameField = document.getElementById('usernameField') as HTMLInputElement;
     const roomField = document.getElementById('roomField') as HTMLInputElement;
 
+    console.log('test');
     if (form) form.addEventListener('submit', (event) => {
       event.preventDefault();
+      event.stopImmediatePropagation()
+      console.log('test');
       let data = new FormData(form);
       let uname = data.get('username') as string;
       let room = data.get('room') as string;
@@ -285,6 +290,8 @@ export class UI {
         alert('You need to join a room with a username!');
         return;
       }
+
+      console.log('test');
 
       this.loginUsername = uname;
       this.loginRoom = room;
@@ -294,19 +301,18 @@ export class UI {
 
       submit.disabled = true;
       submit.value = "Loading...";
-
     });
 
     usernameField.addEventListener('keypress', (e) => {
       if (e.which == 13) {
-        e.preventDefault()
+        e.preventDefault();
         roomField.focus();
       }
     });
   }
 
   public hideLoginOverlay() {
-    const loginOverlay = document.getElementById('login-overlay');
+    const loginOverlay = document.getElementById('room-login-overlay');
     if (loginOverlay) {
       loginOverlay.style.opacity = '0';
       setTimeout(() => {
@@ -317,7 +323,7 @@ export class UI {
   }
 
   public showLoginOverlay() {
-    const loginOverlay = document.getElementById('login-overlay');
+    const loginOverlay = document.getElementById('room-login-overlay');
     if (loginOverlay) {
       loginOverlay.style.display = 'inline-block';
       loginOverlay.style.opacity = '1';
@@ -327,7 +333,7 @@ export class UI {
 
   public performLogout(options: {userInitiated?: boolean}) {
     this.drawingCanvas.monitorKeyboardShortcuts = false;
-    const loginOverlay = document.getElementById('login-overlay');
+    const loginOverlay = document.getElementById('room-login-overlay');
     if (loginOverlay) {
       const isAlreadyLoggedOut = loginOverlay.style.opacity != '0';
 

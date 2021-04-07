@@ -1,135 +1,6 @@
 import SocketIO from 'socket.io';
 
-interface User {
-  username: string | null;
-  room: string | null;
-};
-
-interface Room {
-  users: string[];
-  whiteboard: DrawDataLinkedList;
-  cleanupTimeout?: ReturnType<typeof setTimeout>;
-}
-
-interface RoomInfo {
-  users: { [uid: string]: User };
-};
-
-interface Whiteboard {
-  drawDataList: DrawData[];
-}
-
-interface DrawDataLinkedList {
-  head: DrawDataLinkedNode | null,
-  tail: DrawDataLinkedNode | null,
-  idToNode: { [id: string]: DrawDataLinkedNode }
-}
-
-interface DrawDataLinkedNode {
-  prev: DrawDataLinkedNode | null,
-  element: DrawData,
-  next: DrawDataLinkedNode | null
-}
-
-
-
-/**
- * BoardEvent is simply a representation of an event
- * that can be sent to and from the server.
- *
- * It can either be a DrawEvent or DrawPreviewEvent.
- * See the relevant docs for details.
- */
-type BoardEvent = DrawEvent | DrawPreviewEvent;
-
-/**
- * DrawEvent is a representation of a draw action.
- *
- * It describes every piece of information required to draw in the form of a list
- * of DrawData objects.
- *
- * This action refers to persistent actions, and its DrawData objects will be processed
- * and cached by the server for further redistribution should there be a need, until
- * a delete action for the corresponding DrawData is performed.
- */
-interface DrawEvent {
-  kind: "draw",
-  originUserId?: string,
-  action: DrawEventAction,
-  toolId: string | null,
-  data: DrawData[]
-}
-/**
- * DrawEventAction describes the action a DrawEvent should take.
- * There are three options, all of which are up to the tool in question to interpret:
- * - 'add'    : add the list of json data for the corresponding ids.
- * - 'delete' : delete the list of json data for the corresponding ids.
- * - 'change' : dynamically add, change *or* delete the list of json data for the corresponding ids.
- */
-type DrawEventAction = "add" | "delete" | "change";
-/**
- * DrawData contains the minimally required JSON information to be drawn.
- * It simply has a reference to an id and the json draw data.
- *
- * the id parameter is a GUID for the path.
- * the aboveId parameter helps refer to setting or changing the relative z-index above another GUID.
- *
- * json parameter important notes:
- *
- * - null represents draw data with nothing, i.e. draw no content.
- * if used in conjunction with 'add'    action, an element with nothing will be added.
- * if used in conjunction with 'change' action, data will be changed to nothing.
- *
- * - undefined represents no data whatsoever, i.e. drawing information does not exist.
- * if used in conjunction with 'add'    action, nothing happens.
- * if used in conjunction with 'change' action, the 'delete' action should be performed instead.
- *
- * the replaceId and json parameter are ignored by default if the action is 'delete'..
- */
-interface DrawData {
-  id: string,
-  aboveId?: string,
-  json: string | null | undefined
-}
-/**
- * DrawPreviewEvent is a representation for a draw action in a preview stage.
- * This means the draw action is not finalised yet, or is only a temporary
- * visual on the client side.
- *
- * It describes a single snapshot of the preview event via the relevant parameters.
- * The event should not be used to send drawing data, and shall be discarded by the
- * client once the 'end' action is performed or received.
- *
- * As this is primarily a client only event, the server only serves as a middleman
- * to redistribute the event to every connected user, never more than once.
- */
-interface DrawPreviewEvent {
-  kind: "preview",
-  originUserId?: string,
-  action: DrawPreviewEventAction,
-  timeStamp: number,
-  point: {
-    x: number,
-    y: number,
-  },
-  toolId: string,
-  color: string,
-  size: number,
-  adjustedSize?: number,
-};
-/**
- * DrawPreviewEventAction describes the stage of the preview event.
- * There are three options, all of which are up to the tool in question to interpret:
- *
- * For instance:
- * - 'begin' refers to the start of a preview action,
- * - 'move'  refers to a change in the preview action,
- * - 'end'   refers to the end of the preview action.
- *
- * When the 'end' action is performed or received, all clients must discard every prior
- * event until and including the 'begin' action.
- */
-type DrawPreviewEventAction = "begin" | "move" | "end";
+import { LegacyUser, LegacyRoom, LegacyRoomInfo, LegacyWhiteboard, RoomMessage, BoardEvent, DrawEvent, DrawEventAction, DrawPreviewEvent, DrawPreviewEventAction, DrawData, DrawDataLinkedList, DrawDataLinkedNode } from './types';
 
 
 // wrapper around SocketIO.Socket
@@ -209,8 +80,8 @@ class SocketServer {
   public io: SocketIO.Server;
 
   private sockets: Map<string,Socket>;
-  private users: Map<string,User>;
-  private rooms: Map<string,Room>;
+  private users: Map<string,LegacyUser>;
+  private rooms: Map<string,LegacyRoom>;
 
   constructor(http: any) {
     this.io = SocketIO(http);
@@ -233,12 +104,12 @@ class SocketServer {
     let r = this.rooms.get(room);
     if (!r) return; // nothing to broadcast
 
-    let users: { [uid: string]: User } = {};
+    let users: { [uid: string]: LegacyUser } = {};
     r.users?.forEach((uid: string) => {
-      users[uid] = this.users.get(uid) as User // if it's null something is wrong
+      users[uid] = this.users.get(uid) as LegacyUser // if it's null something is wrong
     });
 
-    let roomInfo: RoomInfo = {
+    let roomInfo: LegacyRoomInfo = {
       users: users
     };
     this.io.to(room).emit('room info', roomInfo);
@@ -248,7 +119,7 @@ class SocketServer {
     if (!this.users.has(socketId)) {
       this.users.set(socketId, { username: null, room: null });
     }
-    let user = this.users.get(socketId) as User;
+    let user = this.users.get(socketId) as LegacyUser;
     user.username = username;
   }
 
@@ -258,7 +129,7 @@ class SocketServer {
   }
 
   public processDrawEvent(socketId: string, event: DrawEvent): void {
-    let user: User | undefined = this.users.get(socketId);
+    let user: LegacyUser | undefined = this.users.get(socketId);
     if (!user) {
       console.log('unknown DrawEvent source: %s', socketId);
       return;
@@ -267,7 +138,7 @@ class SocketServer {
       console.log('user (id %s) is not in a room!', socketId);
       return;
     }
-    let room: Room | undefined = this.rooms.get(user.room);
+    let room: LegacyRoom | undefined = this.rooms.get(user.room);
     if (!room) {
       console.log('bad roomId', user.room);
       return;
@@ -339,12 +210,12 @@ class SocketServer {
     }
   }
 
-  public getRoomWhiteboard(roomId: string): Whiteboard {
-    let room: Room | undefined = this.rooms.get(roomId);
+  public getRoomWhiteboard(roomId: string): LegacyWhiteboard {
+    let room: LegacyRoom | undefined = this.rooms.get(roomId);
     if (!room) {
       throw 'Bad room id ' + roomId;
     }
-    let whiteboard: Whiteboard = {
+    let whiteboard: LegacyWhiteboard = {
       drawDataList: []
     }
     let node = room.whiteboard.head;
@@ -356,11 +227,11 @@ class SocketServer {
   }
 
   public setUserRoom(socketId: string, room: string | null): void {
-    let user = this.users.get(socketId) as User;
+    let user = this.users.get(socketId) as LegacyUser;
 
     // leave
     if (user.room) {
-      let r = this.rooms.get(user.room) as Room;
+      let r = this.rooms.get(user.room) as LegacyRoom;
       let idx = r.users.indexOf(socketId);
       r.users.splice(idx, 1);
 
@@ -380,12 +251,12 @@ class SocketServer {
 
     // join
     if (room) {
-      let r: Room;
+      let r: LegacyRoom;
       if (!this.rooms.has(room)) {
         r = { users: [], whiteboard: {head: null, tail: null, idToNode: {}} };
         this.rooms.set(room, r);
       } else {
-        r = this.rooms.get(room) as Room;
+        r = this.rooms.get(room) as LegacyRoom;
       }
       r.users.push(socketId);
 
@@ -411,4 +282,4 @@ class SocketServer {
 };
 
 export default SocketServer;
-export { SocketServer, User, Room, RoomInfo, Whiteboard, BoardEvent, DrawEvent, DrawEventAction, DrawPreviewEvent, DrawPreviewEventAction, DrawData };
+export { SocketServer };

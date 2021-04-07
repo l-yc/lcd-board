@@ -1,7 +1,7 @@
 import paper from 'paper'
 
 import { log, generateGUIDv4 } from './utils';
-import { DrawEvent, DrawEventAction, DrawData } from '../../Socket';
+import { DrawEvent, DrawEventAction, DrawData } from '../../types';
 import { SocketServer } from './SocketServer';
 import { UI } from './UI';
 import { DrawingMember } from './DrawingMember';

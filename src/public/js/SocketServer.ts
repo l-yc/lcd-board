@@ -4,7 +4,7 @@ import paper from 'paper';
 
 import { log } from './utils';
 
-import { Whiteboard, BoardEvent, DrawEvent } from '../../Socket';
+import { LegacyWhiteboard, BoardEvent, DrawEvent } from '../../types';
 import { UI } from './UI';
 import { DrawingTool } from './DrawingTool';
 
@@ -32,7 +32,7 @@ export class SocketServer {
       ui?.performLogout({userInitiated: false});
     });
 
-    this.socket.on('room whiteboard', (whiteboard: Whiteboard) => { // after joining
+    this.socket.on('room whiteboard', (whiteboard: LegacyWhiteboard) => { // after joining
       log('received room whiteboard:', whiteboard);
       let deGroups: { [group: string]: DrawingTool } = {};
       let cnt = 0;

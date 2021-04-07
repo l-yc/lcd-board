@@ -45,7 +45,8 @@ Have fun!
 
 ## Quickstart
 
-- Make sure you already have `nodejs` and `npm` installed.
+- Make sure you already have `nodejs`, `npm`, and `mysql` installed.
+\[[nodejs + npm](https://nodejs.dev)\] \[[mysql](https://dev.mysql.com/downloads/mysql/)\]
 - Install `yarn`
 ```
 npm install -g yarn
@@ -57,6 +58,12 @@ yarn install
 - Build project
 ```
 yarn run gulp build
+```
+- Set up database 
+
+(note: for best security, change the database user password in `make_database.sql` and `src/Database.ts`)
+```
+mysql -u root -p < make_database.sql
 ```
 - Start the server
 ```

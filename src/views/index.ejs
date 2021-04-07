@@ -1,5 +1,15 @@
 <%- include('layouts/header') %>
 <main>
+  <!--<div class="tab-bar-view">
+  </div>
+  <div class="tab-content-view">
+    <div id="dashboard" class="fullscreen-page-item">
+      <%- include('layouts/dashboard.ejs') %>
+    </div>
+    <div id="drawing-panel" class="fullscreen-page-item">
+      <%- include('layouts/drawingWhiteboard.ejs') %>
+    </div>
+  </div>-->
   <div id="top-banner-container">
     <div id="status-container">
       <div id="toolStatus" style="border: 2px solid black"><span><span class="las la-pen-alt"></span>Pen</span></div>
@@ -14,11 +24,11 @@
     <canvas id="myCanvas" resize></canvas>
   </div>
 
-  <div id="login-overlay">
+  <div id="room-login-overlay" class="login-overlay">
     <form id="login-form">
       <input id="usernameField" name="username" type="text" placeholder="Username">
       <input id="roomField" name="room" type="text" placeholder="Room">
-      <input name="login" type="submit" value="Login">
+      <input name="login" type="submit" value="Join Room">
     </form>
   </div>
 
