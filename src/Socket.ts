@@ -2,6 +2,7 @@ import SocketIO from 'socket.io';
 
 import { LegacyUser, LegacyRoom, LegacyRoomInfo, LegacyWhiteboard, RoomMessage, BoardEvent, DrawEvent, DrawEventAction, DrawPreviewEvent, DrawPreviewEventAction, DrawData, DrawDataLinkedList, DrawDataLinkedNode } from './types';
 
+import database from './Database';
 
 // wrapper around SocketIO.Socket
 class Socket {
@@ -46,9 +47,9 @@ class Socket {
     console.log('%s joined %s', this.socket.id, room);
     this.socket.join(room);
     this.room = room;
-    this.server.setUserRoom(this.socket.id, room);
-
-    this.socket.emit('room whiteboard', this.server.getRoomWhiteboard(this.room));
+    this.server.setUserRoom(this.socket.id, room, () => {
+      this.socket.emit('room whiteboard', this.server.getRoomWhiteboard(room));
+    });
   }
 
   private onLeave(): void {
@@ -68,8 +69,10 @@ class Socket {
     //set the user id on server side before re-emitting to all clients
     event.originUserId = this.socket.id;
 
-    //broadcast to room
-    this.socket.broadcast.to(this.room).emit('event', event);
+    if (event.kind != 'draw' || this.server.canProcessDrawEvent(this.socket.id, event)) {
+      //broadcast to room if it's not a draw event, or a draw event that can be processed
+      this.socket.broadcast.to(this.room).emit('event', event);
+    }
 
     //process the event if it's a DrawEvent
     if (event.kind == "draw") this.server.processDrawEvent(this.socket.id, event);
@@ -128,21 +131,37 @@ class SocketServer {
     this.users.delete(socketId);
   }
 
-  public processDrawEvent(socketId: string, event: DrawEvent): void {
+
+  public canProcessDrawEvent(socketId: string, event: DrawEvent): boolean {
     let user: LegacyUser | undefined = this.users.get(socketId);
     if (!user) {
       console.log('unknown DrawEvent source: %s', socketId);
-      return;
+      return false;
     }
     if (!user.room) {
       console.log('user (id %s) is not in a room!', socketId);
-      return;
+      return false;
     }
     let room: LegacyRoom | undefined = this.rooms.get(user.room);
     if (!room) {
       console.log('bad roomId', user.room);
+      return false;
+    }
+    if (room.locked) {
+      console.log('locked roomId', user.room);
+      return false;
+    }
+
+    return true;
+  }
+
+  public processDrawEvent(socketId: string, event: DrawEvent): void {
+    if (!this.canProcessDrawEvent(socketId, event)) {
       return;
     }
+    //force cast, since previous check validates the below to be not null
+    let user: LegacyUser = this.users.get(socketId)!;
+    let room: LegacyRoom = this.rooms.get(user!.room!)!;
 
     console.log('recording draw event %o', event);
     for (let data of event.data) {
@@ -216,7 +235,8 @@ class SocketServer {
       throw 'Bad room id ' + roomId;
     }
     let whiteboard: LegacyWhiteboard = {
-      drawDataList: []
+      drawDataList: [],
+      locked: room.locked
     }
     let node = room.whiteboard.head;
     while (node) {
@@ -226,7 +246,7 @@ class SocketServer {
     return whiteboard;
   }
 
-  public setUserRoom(socketId: string, room: string | null): void {
+  public setUserRoom(socketId: string, room: string | null, readyHandler?: () => void): void {
     let user = this.users.get(socketId) as LegacyUser;
 
     // leave
@@ -252,9 +272,11 @@ class SocketServer {
     // join
     if (room) {
       let r: LegacyRoom;
+      let needsDatabaseUpdate = false;
       if (!this.rooms.has(room)) {
-        r = { users: [], whiteboard: {head: null, tail: null, idToNode: {}} };
+        r = { users: [], locked: false, whiteboard: {head: null, tail: null, idToNode: {}} };
         this.rooms.set(room, r);
+        needsDatabaseUpdate = true;
       } else {
         r = this.rooms.get(room) as LegacyRoom;
       }
@@ -267,6 +289,63 @@ class SocketServer {
         clearTimeout(r.cleanupTimeout);
         delete r.cleanupTimeout;
       }
+
+      if (needsDatabaseUpdate) {
+        //MARK: legacy to non-legacy mapping
+        let _terms = room.split('_');
+        let roomId = _terms.shift()!;
+        let whiteboardName = _terms.join('_');
+        database.retrieveWhiteboard(roomId, whiteboardName, (s, e, data) => {
+          console.log('got room data from database');
+          console.log('parsing data from database', data?.drawDataList.length);
+          let r = this.rooms.get(room);
+          if (s) {
+            let h: DrawDataLinkedNode | null = null;
+            let t: DrawDataLinkedNode | null = null;
+            let p: DrawDataLinkedNode | null = null;
+            let idTN: {[id: string]: DrawDataLinkedNode} = {};
+            for (let d of data?.drawDataList || []) {
+              let n: DrawDataLinkedNode = {
+                prev: p,
+                element: d,
+                next: null
+              };
+              idTN[d.id] = n;
+              if (!h) h = n;
+              if (p) p.next = n;
+              p = n;
+            }
+            t = p;
+            if (p) {
+              let existingWB = r?.whiteboard;
+              if (existingWB) {
+                if (existingWB.tail) existingWB.tail.next = h
+                else existingWB.head = h
+                existingWB.tail = t;
+                Object.assign(existingWB.idToNode, idTN);
+              }
+            }
+            console.log('reload sanity check', this.getRoomWhiteboard(room).drawDataList.length);
+
+            if (r) {
+              r.locked = data?.locked || false;
+              r.saveFunc = () => {
+                if (data) {
+                  data.drawDataList = this.getRoomWhiteboard(room).drawDataList;
+                  database.updateWhiteboard(data.name, data, (s, e) => {
+                    console.log('autosave data from ' + room + ' to database', s, e);
+                  });
+                }
+              }
+              r.autosaveInterval = setInterval(r.saveFunc, 60000);
+            }
+          }
+          if (readyHandler) readyHandler();
+        });
+      } else {
+        console.log('got room data from memory');
+        if (readyHandler) readyHandler();
+      }
     }
 
     // update user
@@ -276,6 +355,13 @@ class SocketServer {
   public deleteRoomIfEmpty(room: string | null): void {
     if (room && this.rooms.get(room)?.users.length == 0) {
       console.log("cleanup: deleting room %s", room);
+
+      let sF = this.rooms.get(room)?.saveFunc;
+      if (sF) sF();
+    
+      let asI = this.rooms.get(room)?.autosaveInterval;
+      if (asI) clearInterval(asI);
+
       this.rooms.delete(room);
     }
   }

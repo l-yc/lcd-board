@@ -14,7 +14,7 @@ interface RoomInfo {
   isActive: boolean;
   isPersistent?: boolean;
   popularity?: number;
-  whiteboards: string[];
+  whiteboards: {name: string, locked: boolean}[];
 };
 
 interface Whiteboard {
@@ -34,7 +34,10 @@ interface LegacyUser {
 interface LegacyRoom {
   users: string[];
   whiteboard: DrawDataLinkedList;
+  locked: boolean;
+  saveFunc?: () => void;
   cleanupTimeout?: ReturnType<typeof setTimeout>;
+  autosaveInterval?: ReturnType<typeof setInterval>;
 }
 
 interface LegacyRoomInfo {
@@ -43,6 +46,7 @@ interface LegacyRoomInfo {
 
 interface LegacyWhiteboard {
   drawDataList: DrawData[];
+  locked: boolean;
 }
 
 

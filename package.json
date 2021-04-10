@@ -9,7 +9,7 @@
   "private": true,
   "scripts": {
     "start": "node ./dist/server.js",
-    "debug": "DEBUG=lcd-board:* yarn run nodemon ./dist/server.js",
+    "debug": "DEBUG=lcd-board:* yarn run nodemon ./dist/server.js --ignore 'drawingFiles/'",
     "serve": "yarn ts-node-dev ./src/server.ts"
   },
   "devDependencies": {

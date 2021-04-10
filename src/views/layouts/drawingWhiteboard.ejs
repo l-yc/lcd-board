@@ -2,6 +2,7 @@
   <div id="status-container">
     <div id="toolStatus" style="border: 2px solid black"><span><span class="las la-pen-alt"></span>Pen</span></div>
     <div id="membersStatus" style="border: 2px solid black"><span><span class="las la-user-alt-slash"></span>0 online</span></div>
+    <div id="disconnectBtn" class="" style="border: 2px solid red"><span><span class="las la-sign-out-alt"></span>Close</span></div>
   </div>
   <div id="members-container"><span></span></div>
   <div id="tool-picker-container" class="picker-container"></div>
@@ -13,9 +14,27 @@
 </div>
 
 <div id="room-login-overlay" class="login-overlay">
-  <form id="login-form">
-    <input id="usernameField" name="username" type="text" placeholder="Username">
-    <input id="roomField" name="room" type="text" placeholder="Room">
-    <input name="login" type="submit" value="Join Room">
+  <form id="room-login-form">
+    <input id="wbUsernameField" name="wbUsername" type="text" placeholder="Username" disabled="true" required>
+    <input id="wbRoomIdField" name="wbRoomId" class="hidden" type="text" placeholder="Room ID" disabled="true" required>
+    <input id="wbRoomField" name="wbRoom" type="text" placeholder="Room" disabled="true" required>
+    <select name="wbWhiteboard" id="wbWhiteboardField" form="room-login-form" required>
+        <option value="" disabled selected>-- Select Whiteboard --</option>
+    </select>
+    <input id="wbJoin" name="wbJoin" type="submit" value="Load Whiteboard">
+    <a id="rmwbLeave">Leave Room</a>
   </form>
+  <div id="wbFSCover" class="fullscreen-overlay-cover">
+      <span>
+          <h2>Join a room first to load a whiteboard!</h2>
+          <br>
+          <span>Look for popular rooms, search for your friends', or make your own.</span>
+          <br>
+          <span>If you have a <code>roomID</code>, you can also use <code>room-search</code> to find and join the room.</span>
+          <br>
+          <br>
+          <br>
+          <span>:)</span>
+      </span>
+  </div>
 </div>

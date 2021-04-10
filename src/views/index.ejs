@@ -1,35 +1,39 @@
 <%- include('layouts/header') %>
 <main>
-  <!--<div class="tab-bar-view">
+  <div class="tab-bar-view">
+    <h1><%= title %></h1>
+    <span class="logout-btn button-link">logout</span>
   </div>
   <div class="tab-content-view">
     <div id="dashboard" class="fullscreen-page-item">
       <%- include('layouts/dashboard.ejs') %>
     </div>
-    <div id="drawing-panel" class="fullscreen-page-item">
+    <div id="room-search" class="fullscreen-page-item hidden">
+      <%- include('layouts/room-search.ejs') %>
+    </div>
+    <div id="my-rooms" class="fullscreen-page-item hidden">
+      <%- include('layouts/my-rooms.ejs') %>
+    </div>
+    <div id="whiteboard" class="fullscreen-page-item hidden">
       <%- include('layouts/drawingWhiteboard.ejs') %>
     </div>
-  </div>-->
-  <div id="top-banner-container">
-    <div id="status-container">
-      <div id="toolStatus" style="border: 2px solid black"><span><span class="las la-pen-alt"></span>Pen</span></div>
-      <div id="membersStatus" style="border: 2px solid black"><span><span class="las la-user-alt-slash"></span>0 online</span></div>
-    </div>
-    <div id="members-container"><span></span></div>
-    <div id="tool-picker-container" class="picker-container"></div>
-    <div id="color-picker-container" class="picker-container"></div>
-    <div id="size-picker-container" class="picker-container"><input id="sizePickerSlider" type="range" min="2" max="60" value="2" class="sizeSlider"></div>
-  </div>
-  <div id="main-container">
-    <canvas id="myCanvas" resize></canvas>
   </div>
 
-  <div id="room-login-overlay" class="login-overlay">
-    <form id="login-form">
-      <input id="usernameField" name="username" type="text" placeholder="Username">
-      <input id="roomField" name="room" type="text" placeholder="Room">
-      <input name="login" type="submit" value="Join Room">
+  <div id="account-login-overlay" class="login-overlay" style="opacity: 0; display: none;">
+    <form id="login-account-form">
+      <h1 style="text-align:center;"><%= title %></h1>
+      <input id="username" name="username" type="text" placeholder="Username" required>
+      <input id="password" name="password" type="password" placeholder="Password" required>
+      <input id="login-btn" name="login" type="submit" value="Login">
+      <span class="error hidden">Error Placeholder</span>
+      <a id="login-account-link-1" class="button-link" href="#">Login as Guest...</a>
+      <a id="login-account-link-2" class="button-link"  href="#">Register an Account...</a>
     </form>
+    <noscript>
+    <div class="fullscreen-overlay-cover">
+      Please enable JavaScript to use the webapp.
+    </div>
+  </noscript>
   </div>
 
   <script type="text/javascript" src="js/lib/paper-full.min.js"></script>

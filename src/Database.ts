@@ -32,26 +32,32 @@ class Database {
 
       console.log('connected as id ' + (this.connection.threadId)?.toString());
     });
+    let dir = './drawingFiles';
+
+    if (!fs.existsSync(dir)){
+      fs.mkdirSync(dir);
+    }
   }
 
   //
   // MARK : - Database Operation Helpers
   //
   private performRead(command: [string, any[]], handler: DatabaseReturnResponse<any[]>) {
-    console.log('running read query');
-    console.log(command);
     this.connection.query(command[0], command[1], (err, rows) => {
-      handler(err == null, err ? 'a database error occured' : null, rows);
+      console.log('- read query -', command);
+      console.log('- return response -', rows);
+      if (err) console.log(err);
+
+      handler(err == null, err ? 'A database error occured. Check backend logs for details.' : null, rows);
     });
   }
   private performReads(commands: [string, any[]][], readHandlers: ReadQueueResponse[], completionHandler: CompletionReturnResponse) {
-    console.log('running read queries');
-    console.log(commands);
+    console.log('- running read queries -', commands);
     let queueI = 0;
     let toRun = () => this.connection.query(commands[queueI][0], commands[queueI][1], (err, rows) => {
       if (err) {
-        console.log(err);
-        completionHandler(false, err ? 'a database error occured' : null);
+        console.log('- read error -', err);
+        completionHandler(false, err ? 'A database error occured. Check backend logs for details.' : null);
         return;
       }
 
@@ -68,15 +74,14 @@ class Database {
   }
 
   private performWriteTransaction(commands: [string, any[]][], handler: SuccessReturnResponse) {
-    console.log('running write queries');
-    console.log(commands);
+    console.log('- running write queries -', commands);
 
     let queueI = 0;
 
     let rollback = (err: MysqlError) => {
       this.connection.rollback(() => {
-        console.log(err);
-        handler(false, 'a database error occured');
+        console.log('- write error -', err);
+        handler(false, 'A database error occured. Check backend logs for details.');
       });
     };
     let commitHandler = (err: MysqlError) => {
@@ -100,7 +105,7 @@ class Database {
     this.connection.beginTransaction((err) => {
       if (err) {
         console.log(err);
-        handler(false, 'a database error occured');
+        handler(false, 'A database error occured. Check backend logs for details.');
       } else if (commands.length > 0) {
         toRun();
       } else {
@@ -117,32 +122,32 @@ class Database {
     this.performRead(
       ["SELECT passwordHash FROM RegisteredUser WHERE username = ?", [username]],
       (_, e, rows) => {
-        let s = false;
-        if (rows?.length == 1) {
+        if (rows && rows.length > 0) {
           let hash = rows[0]['passwordHash'].toString('utf8');
+          console.log(hash);
           bcrypt.compare(password, hash, (err, res) => {
             if (err) {
               console.log(err);
             }
-            s = res;
+
+            if (res) {
+              let token = this.generateLoginToken();
+
+              this.performWriteTransaction([
+                ["INSERT INTO RegisteredUserConnectionTokens VALUES (?, ?);", [username, token]],
+                ["CALL updateUserExpiryDate(?);", [username]]
+              ], (success, error) => {
+                if (success) this.cacheValidLoginToken(username, token);
+                handler(success, error, token);
+              });
+
+            } else {
+              handler(false, e || 'The username or password is incorrect.', null);
+            }
           });
-        }
-
-        if (s) {
-          let token = this.generateLoginToken();
-
-          this.performWriteTransaction([
-            ["INSERT INTO RegisteredUserConnectionTokens VALUES (?, ?);", [username, token]],
-            ["CALL updateUserExpiryDate(?);", [username]]
-          ], (success, error) => {
-            if (success) this.cacheValidLoginToken(username, token);
-            handler(success, error, token);
-          });
-
         } else {
           handler(false, e || 'The username or password is incorrect.', null);
         }
-
       }
     );
   }
@@ -183,8 +188,7 @@ class Database {
             isGuest ?
               ["UPDATE GuestUser SET connectionToken = NULL WHERE username = ? AND connectionToken = ?", [username, token]] :
               ["DELETE FROM RegisteredUserConnectionTokens WHERE username = ? AND connectionToken = ?", [username, token]],
-
-            ["UPDATE User SET expiryDate = ? WHERE username = ?", [new Date(new Date().getTime() + (isGuest ? 3 : 90)*(24*60*60*1000)), username]]
+            ["CALL updateUserExpiryDate(?);", [username]]
           ], (success, error) => {
             if (success) this.uncacheValidLoginToken(username, token);
             handler(success, error);
@@ -231,7 +235,7 @@ class Database {
                   });
                 }
               } else {
-                handler(false, e || 'Username taken.', null);
+                handler(false, e || 'Username taken by another guest session.', null);
               }
             });
 
@@ -252,8 +256,8 @@ class Database {
     this.performRead(
       ["CALL verifyConnectionToken(?, ?);", [username, token]],
       (s, e, rows) => {
-        if (rows && rows.length > 0) {
-          let result = (rows[0]["result"] as boolean);
+        if (rows && rows[0] && rows[0].length > 0) {
+          let result = rows[0][0]["result"];
           handler(result, null);
         } else {
           handler(false, e || 'Invalid login session.');
@@ -273,7 +277,7 @@ class Database {
       let prevUpdate = this.validLoginTokenCacheLastUpdate[item];
       if (prevUpdate == null || Date.now() - prevUpdate.getTime() > 300*1000) {
         console.log('updating expiry date for ' + username + ' - from cache check');
-        this.performRead(["CALL updateUserExpiryDate(?);", [username]], () => {}); //result of this call need not be known
+        this.performWriteTransaction([["CALL updateUserExpiryDate(?);", [username]]], () => {}); //result of this call need not be known
       }
       this.validLoginTokenCacheLastUpdate[item] = new Date();
     }
@@ -313,39 +317,46 @@ class Database {
     let room: RoomInfo = {
       id:           this.generateId(),
       users:        [],
-      whiteboards:  [],
+      whiteboards:  [{name: 'default', locked: false}],
       displayName:  name,
       isPublic:     true,
       owner:        username,
-      isActive:     true
+      isActive:     true,
+      isPersistent: false,
     };
     this.saveRoomInfo(room, (s, e) => {
-      handler(s, e, s ? room : null);
+      this.createWhiteboard(room.id, 'default', (s2, e2, _) => {
+        if (!s2) room.whiteboards = [];
+        handler(s, e, s ? room : null);
+      });
     });
   }
 
   public retrieveRoomInfo(roomId: string, handler: DatabaseReturnResponse<RoomInfo>) {
     this.performRead(
       [
-        "SELECT roomID, r.name as 'name', isPublic, ownerUsername, persistent, popularityRating, w.name as 'whiteboardName' " +
+        "SELECT r.roomID, r.name as 'name', isPublic, ownerUsername, (ar.roomID IS NOT NULL) as 'isActive' , persistent, popularityRating, w.name as 'whiteboardName', w.locked " +
           "FROM Room r LEFT JOIN ActiveRoom ar ON r.roomID = ar.roomID " +
-          "LEFT JOIN Whiteboards w ON r.roomID = w.roomID " +
-          "WHERE roomID = ?", [roomId]
+          "LEFT JOIN Whiteboard w ON r.roomID = w.roomID " +
+          "WHERE r.roomID = ?", [roomId]
       ],
       (s, e, rows) => {
         if (rows && rows.length > 0) {
           let roomInfo: RoomInfo = {
             id:           rows[0]['roomID'] as string,
             users:        [],
-            whiteboards:  rows.map((x: any) => { return x['whiteboardName'] }),
+            whiteboards:  rows.map((x: any) => { return {name: x['whiteboardName'], locked: x['locked']} }),
             displayName:  rows[0]['name'] as string,
             isPublic:     rows[0]['isPublic'] as boolean,
-            owner:        rows[0]['owner'] as string,
-            isActive:     rows[0]['persistent'] === undefined,
+            owner:        rows[0]['ownerUsername'] as string,
+            isActive:     rows[0]['isActive'] as boolean
           }
           if (roomInfo.isActive) {
             roomInfo.isPersistent = rows[0]['persistent'] as boolean,
             roomInfo.popularity = rows[0]['popularityRating'] as number
+          }
+          if (roomInfo.whiteboards.length == 1 && roomInfo.whiteboards[0].name == null) {
+            roomInfo.whiteboards = []
           }
 
           handler(true, null, roomInfo);
@@ -358,14 +369,15 @@ class Database {
 
   public saveRoomInfo(room: RoomInfo, handler: SuccessReturnResponse) {
     let queries: [string, any[]][] = [
-      [ "INSERT INTO Room VALUES (?, ?, ?, ?) ON DUPLICATE UPDATE name = ?, isPublic = ?, ownerUsername = ?" ,
-        [room.id, room.displayName, room.isPublic, room.owner] ]
+      [ "INSERT INTO Room VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = ?, isPublic = ?, ownerUsername = ?" ,
+        [room.id, room.displayName, room.isPublic, room.owner,
+          room.displayName, room.isPublic, room.owner] ]
     ]
 
     if (room.isActive) {
       queries.push(
-        [ "INSERT INTO ActiveRoom VALUES (?, ?, 0) ON DUPLICATE UPDATE persistent = ?" ,
-            [room.id, room.isPersistent || false] ]
+        [ "INSERT INTO ActiveRoom VALUES (?, ?, 0) ON DUPLICATE KEY UPDATE persistent = ?" ,
+            [room.id, room.isPersistent || false, room.isPersistent || false] ]
       )
     } else {
       queries.push(
@@ -375,6 +387,90 @@ class Database {
     }
 
     this.performWriteTransaction(queries, handler);
+  }
+
+  public deleteRoomWithInfo(roomId: string, handler: SuccessReturnResponse) {
+    this.performWriteTransaction([
+      ["DELETE FROM Room WHERE roomID = ?", [roomId]]
+    ], handler);
+  }
+
+  public retrieveOwnerRoomList(username: string, handler: DatabaseReturnResponse<{roomId: string, displayName: string, owner: string}[]>) {
+    this.performRead([
+      "SELECT roomID, name, ownerUsername FROM Room r WHERE ownerUsername = ?",
+      [username]
+    ], (s, e, rows) => {
+      if (s && !e && rows) {
+        let returnList = rows.map((row: any) => {
+          return {roomId: row["roomID"], displayName: row["name"], owner: row["ownerUsername"]};
+        });
+        handler(true, null, returnList);
+      } else {
+        handler(s, e, null);
+      }
+    });
+  }
+  public retrievePopularRoomList(username: string, handler: DatabaseReturnResponse<{roomId: string, displayName: string, owner: string}[]>) { 
+    this.performRead([
+      "SELECT r.roomID, r.name, r.ownerUsername " +
+      "FROM Room r LEFT JOIN ActiveRoom ar ON r.roomID = ar.roomID " +
+      "LEFT JOIN PastJoin pj ON r.roomID = pj.roomID AND username = ? " +
+      "WHERE isPublic = TRUE OR pj.timestamp IS NOT NULL " +
+      "ORDER BY popularityRating DESC " +
+      "LIMIT 15;",
+      [username]
+    ], (s, e, rows) => {
+      if (s && !e && rows) {
+        let returnList = rows.map((row: any) => {
+          return {roomId: row["roomID"], displayName: row["name"], owner: row["ownerUsername"]};
+        });
+        handler(true, null, returnList);
+      } else {
+        handler(s, e, null);
+      }
+    });
+  }
+
+  public retrieveRoomSearchResults(
+    username: string,
+    queryParams: {
+      roomId?: string,
+      roomName?: string,
+      owner?: string,
+      whiteboardName?: string,
+      isPublic?: boolean
+      isActive?: boolean
+    },
+    handler: DatabaseReturnResponse<{
+      roomId: string, displayName: string, owner: string
+    }[]>) {
+
+
+      this.performRead(
+        [
+          "CALL filterRooms(?,?,?,?,?,?,?)",
+          [
+            username,
+            queryParams.roomId || null,
+            queryParams.roomName || null,
+            queryParams.owner || null,
+            queryParams.whiteboardName || null,
+            queryParams.isPublic === undefined ? null : queryParams.isPublic,
+            queryParams.isActive === undefined ? null : queryParams.isActive
+          ]
+        ],
+        (s, e, rows) => {
+          if (s && !e && rows) {
+            let returnList = rows[0].map((row: any) => {
+              return {roomId: row["roomID"], displayName: row["name"], owner: row["ownerUsername"]};
+            });
+            handler(true, null, returnList);
+          } else {
+            handler(s, e, null);
+          }
+        }
+      );
+
   }
 
   //
@@ -509,7 +605,7 @@ class Database {
           }
           this.retrieveDrawingFile(whiteboard.filename, (data) => {
             if (data) whiteboard.drawDataList = data;
-            handler(true, data == null ? 'error retrieving drawing file' : null, whiteboard);
+            handler(true, data === null ? 'error retrieving drawing file' : null, whiteboard);
           });
         } else {
           handler(false, e || 'whiteboard does not exist', null);
@@ -518,7 +614,7 @@ class Database {
     );
   }
 
-  public updateWhiteboard(whiteboard: Whiteboard, handler: SuccessReturnResponse) {
+  public updateWhiteboard(oldName: string, whiteboard: Whiteboard, handler: SuccessReturnResponse) {
     let failHandler = (err: string) => {
       handler(false, err);
     }
@@ -532,7 +628,7 @@ class Database {
           if (whiteboard.locked != rows[0]['locked']) {
             //update locked state if needed
             this.performWriteTransaction(
-              [["UPDATE Whiteboard SET locked = ? WHERE roomID = ? AND name = ?", [whiteboard.locked, whiteboard.roomId, whiteboard.name]]],
+              [["UPDATE Whiteboard SET name = ?, locked = ? WHERE roomID = ? AND name = ?", [whiteboard.name, whiteboard.locked, whiteboard.roomId, oldName]]],
               (s, e) => {
                 if (!s) {
                   failHandler(e || 'whiteboard lock toggle failed')
@@ -563,6 +659,15 @@ class Database {
     );
   }
 
+  public deleteWhiteboard(roomId: string, name: string, handler: SuccessReturnResponse) {
+    this.performWriteTransaction(
+      [
+        ['DELETE FROM Whiteboard WHERE roomId = ? AND name = ?', [roomId, name]]
+      ],
+      handler
+    );
+  }
+
   //
   // FAVOURITE DRAWINGS
   //
@@ -579,7 +684,7 @@ class Database {
         this.performWriteTransaction([
           ["INSERT INTO FavouriteDrawings VALUES (?, ?, ?);", [username, name, filename]]
         ], handler);
-      });
+      }) ;
     });
   }
 
@@ -647,18 +752,21 @@ class Database {
     ], handler);
   }
 
-  public retrieveFavouriteRoomList(username: string, handler: DatabaseReturnResponse<string[]>) {
+  public retrieveFavouriteRoomList(username: string, handler: DatabaseReturnResponse<{roomId: string, displayName: string, owner: string}[]>) {
     this.performRead(
-      ["SELECT roomID FROM FavouriteRooms WHERE username = ?", [username]],
+      [
+        "SELECT roomID, name, ownerUsername FROM FavouriteRooms NATURAL JOIN Room " +
+          "WHERE username = ?", [username]
+      ],
       (s, e, rows) => {
         if (s && !e && rows) {
-        let returnList = rows.map((x: any) => {
-          return x["roomID"] as string;
-        });
-        handler(true, null, returnList);
-      } else {
-        handler(s, e, null);
-      }
+          let returnList = rows.map((row: any) => {
+            return {roomId: row["roomID"], displayName: row["name"], owner: row["ownerUsername"]};
+          });
+          handler(true, null, returnList);
+        } else {
+          handler(s, e, null);
+        }
       }
     );
   }
@@ -686,13 +794,20 @@ class Database {
       ["DELETE FROM PastJoin WHERE username = ? AND roomID = ?;", [username, roomId]]
     ], handler);
   }
-
-  public retrievePastJoinedRooms(username: string, handler: DatabaseReturnResponse<[string, Date][]>) {
+ public retrievePastJoinedRooms(username: string, handler: DatabaseReturnResponse<{roomId: string, displayName: string, owner: string, joinTimestamp: Date}[]>) {
     this.performRead(
-      ["SELECT roomId, timestamp FROM PastJoin WHERE username = ?;", [username]],
+      [
+        "SELECT roomID, name, ownerUsername, timestamp FROM PastJoin NATURAL JOIN Room " +
+          "WHERE username = ? ORDER BY timestamp DESC", [username]
+      ],
       (s, e, rows) => {
         let result = rows?.map((x: any) => {
-          return [ x[0]['roomId'] as string , x[0]['timestamp'] as Date ] as [string, Date]
+          return {
+            roomId: x['roomID'] as string,
+            displayName: x['name'] as string,
+            owner: x['ownerUsername'] as string,
+            joinTimestamp: x['timestamp'] as Date
+          }
         })
         handler(s, e, result || null)
       }

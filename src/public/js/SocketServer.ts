@@ -5,7 +5,7 @@ import paper from 'paper';
 import { log } from './utils';
 
 import { LegacyWhiteboard, BoardEvent, DrawEvent } from '../../types';
-import { UI } from './UI';
+import { WhiteboardUI } from './WhiteboardUI';
 import { DrawingTool } from './DrawingTool';
 
 export class SocketServer {
@@ -13,9 +13,9 @@ export class SocketServer {
   private username: string | null;
   private room: string | null;
 
-  public ui: UI | null = null;
+  public ui: WhiteboardUI | null = null;
 
-  constructor(ui?: UI) {
+  constructor(ui?: WhiteboardUI) {
     this.socket = io({
       autoConnect: true,
       path: window.location.pathname + "socket.io"
@@ -101,6 +101,16 @@ export class SocketServer {
       this.room = room;
       this.socket.emit('join', room);
     }
+  }
+
+  leave() {
+    let room = this.room;
+    if (room) {
+      log("leave room", room);
+      this.socket.emit('leave', room);
+      this.room = null;
+    }
+    this.ui?.performLogout({userInitiated: true});
   }
 
   sendEvent(event: BoardEvent) {

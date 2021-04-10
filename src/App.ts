@@ -32,30 +32,28 @@ class App {
 
   private verifyToken(request: Request, handler: (valid: boolean) => void) {
     let info = this.getAuthInfo(request);
-    if (info)
+    if (info) {
       database.verifyLoginToken(info.username, info.token, (s, e) => {
         handler(s);
       });
-    else
-      handler(false);
+    } else handler(false);
   }
 
   private setToken(response: Response, username: string, token: string) {
-    response.cookie(SESSION_COOKIE_KEY, username, { maxAge: 900000, httpOnly: true });
-    response.cookie(SESSION_USER_KEY  , token   , { maxAge: 900000 });
+    response.cookie(SESSION_COOKIE_KEY, token   , { maxAge: 3*86400*1000, httpOnly: true });
+    response.cookie(SESSION_USER_KEY  , username, { maxAge: 3*86400*1000 });
   }
 
   private refreshToken(request: Request, response: Response) {
     let info = this.getAuthInfo(request);
     if (info) {
-      response.cookie(SESSION_COOKIE_KEY, info.username, { maxAge: 900000, httpOnly: true });
-      response.cookie(SESSION_USER_KEY  , info.token   , { maxAge: 900000 });
+      this.setToken(response, info.username, info.token);
     }
   }
 
   private getAuthInfo(request: Request): {username: string, token: string} | null {
-    const username = request.cookies[SESSION_USER_KEY] as string | null;
     const token    = request.cookies[SESSION_COOKIE_KEY] as string | null;
+    const username = request.cookies[SESSION_USER_KEY] as string | null;
     return (username && token) ? {username: username, token: token} : null;
   }
 
@@ -69,32 +67,47 @@ class App {
     const router = express.Router();
 
     //HTML
-    router.get('/', function (req: Request, res: Response) {
-      res.render('index', { title: 'lcd-board' });
+    router.get('/', (req: Request, res: Response) => {
+      if (this.getAuthInfo(req) != null) {
+        this.verifyToken(req, (valid) => {
+          if (!valid) {
+            this.deleteToken(res);
+          };
+          res.render('index', { title: 'lcd-board' });
+        });
+      } else {
+        res.render('index', { title: 'lcd-board' });
+      }
     });
-    router.get('/assets/*', function (req: Request, res: Response) {
+    router.get('/assets/*', (req: Request, res: Response) => {
       res.sendFile(path.join(__dirname, req.url));
     });
 
-    router.get('/login', function (req: Request, res: Response) {
-      res.render('login', { title: 'lcd-board' });
-    });
 
     //API routes
     router.post('/login', (req: Request, res: Response) => {
+      console.log(req.body);
       const username = req.body.username;
       const password = req.body.password;
 
       if (username == null || password == null) {
-        let auth = {success: false, "error": "incomplete submission provided"};
+        let auth = {success: false, "error": "Incomplete submission provided."};
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify(auth));
         return;
       }
 
+      let info = this.getAuthInfo(req);
+      if (info) database.logout(info.username, info.token, () => {});
+
       database.login(username, password, (success, err, token) => {
         let auth = {'success': success, 'error': err};
         res.setHeader('Content-Type', 'application/json');
+        if (token) {
+          this.setToken(res, username, token);
+        } else {
+          this.deleteToken(res);
+        }
         res.end(JSON.stringify(auth));
       });
 
@@ -103,7 +116,7 @@ class App {
       const info = this.getAuthInfo(req);
 
       if (info == null) {
-        let auth = {success: false, error: 'incomplete submission provided'};
+        let auth = {success: false, error: 'No login session to logout.'};
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify(auth));
         return;
@@ -123,11 +136,14 @@ class App {
       const password = req.body.password;
 
       if (username == null || password == null) {
-        let auth = {success: false, error: 'incomplete submission provided'};
+        let auth = {success: false, error: 'Incomplete submission provided.'};
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify(auth));
         return;
       }
+
+      let info = this.getAuthInfo(req);
+      if (info) database.logout(info.username, info.token, () => {});
 
       database.register(username, password, (success, err, token) => {
         let auth = {'success': success, 'error': err};
@@ -138,81 +154,161 @@ class App {
 
     });
 
+    router.post('/guest', (req: Request, res: Response) => {
+      const username = req.body.username;
+
+      if (username == null) {
+        let auth = {success: false, error: 'Incomplete submission provided.'};
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(auth));
+        return;
+      }
+
+      database.registerGuest(username, (success, err, token) => {
+        let auth = {'success': success, 'error': err};
+        res.setHeader('Content-Type', 'application/json');
+        if (token) this.setToken(res, username, token);
+        res.end(JSON.stringify(auth));
+      });
+
+    });
+
+    router.get('/demo', (req: Request, res: Response) => {
+      this.verifyToken(req, (valid) => {
+        database.testDump((dump) => {
+          res.render('demo',
+                     { title: 'lcd-board user list [database dump demo]',
+                       message: valid ? dump.join(", ") : 'Unauthorized.'
+                     }
+                    );
+        });
+      });
+    });
 
     //mapping functions to database calls
     const U_N_OBJ = ['username', 'name', 'data'];
+    const U_OBJ = ['username', 'data'];
     const U_N = ['username', 'name'];
     const U_ID = ['username', 'id'];
     const ID_N = ['id', 'name'];
+    const N_OBJ = ['name', 'data'];
     const OBJ_ = ['data'];
     const ID_ = ['id'];
     const ID_R = ['id', 'range'];
-    const U_ = ['id'];
+    const U_ = ['username'];
 
-    let databaseCalls : [any, string[]][] = [
-
-      [database.createRoom,       U_N],  //u, name, DRR
-      [database.saveRoomInfo,     OBJ_], //info, SRR
-      [database.retrieveRoomInfo, OBJ_], //id, DRR
-
-      [database.createWhiteboard,   ID_N], //id, name, DRR
-      [database.retrieveWhiteboard, ID_N], //id, name, DRR
-      [database.updateWhiteboard,   OBJ_], //info, SRR
-
-      [database.retrieveFavouriteRoomList, U_], //u, DRR
-      [database.addFavouriteRoom,          U_ID], //u, rid, SRR
-      [database.deleteFavouriteRoom,       U_ID], //u, rid, SRR
-
-      [database.retrieveFavouriteDrawingList, U_      ], //u, DRR
-      [database.addFavouriteDrawing,          U_N_OBJ ], //u, name, wbinfo, SRR
-      [database.retrieveFavouriteDrawing,     U_N     ], //u, name, DRR
-      [database.deleteFavouriteDrawing,       U_N     ], //u, name, DRR
-
-      [database.addRoomMessage,       OBJ_], //info, SRR
-      [database.retrieveRoomMessages, ID_R], //rid, (a<b), DRR
-
-      [database.recordJoinRoom,       U_ID], //u, rid, SRR
-      [database.recordDisconnectRoom, U_ID], //u, rid, SRR
-
-      [database.retrievePastJoinedRooms, U_  ], //u, DRR
-      [database.deletePastJoinedRoom,    U_ID], //u, rid, SRR
-      [database.clearPastJoinedRooms,    U_  ]  //u, SRR
-
+    let databaseCalls : [string, string[]][] = [
+      ['createRoom',              U_N],  //u, name, DRR
+      ['saveRoomInfo',            OBJ_], //info, SRR
+      ['retrieveRoomInfo',        ID_], //id, DRR
+      ['deleteRoomWithInfo',      ID_], //id, SRR
+      ['retrieveOwnerRoomList',   U_], //u, DRR
+      ['retrievePopularRoomList', U_], //u, DRR
+      ['retrieveRoomSearchResults', U_OBJ], //u, info, DRR 
+      ['createWhiteboard',   ID_N], //id, name, DRR
+      ['retrieveWhiteboard', ID_N], //id, name, DRR
+      ['updateWhiteboard',   N_OBJ], //info, SRR
+      ['deleteWhiteboard',   ID_N], //id, name, SRR
+      ['retrieveFavouriteRoomList', U_], //u, DRR
+      ['addFavouriteRoom',          U_ID], //u, rid, SRR
+      ['deleteFavouriteRoom',       U_ID], //u, rid, SRR
+      ['retrieveFavouriteDrawingList', U_      ], //u, DRR
+      ['addFavouriteDrawing',          U_N_OBJ ], //u, name, wbinfo, SRR
+      ['retrieveFavouriteDrawing',     U_N     ], //u, name, DRR
+      ['deleteFavouriteDrawing',       U_N     ], //u, name, DRR
+      ['addRoomMessage',       OBJ_], //info, SRR
+      ['retrieveRoomMessages', ID_R], //rid, (a<b), DRR
+      ['recordJoinRoom',       U_ID], //u, rid, SRR
+      ['recordDisconnectRoom', U_ID], //u, rid, SRR
+      ['retrievePastJoinedRooms', U_  ], //u, DRR
+      ['deletePastJoinedRoom',    U_ID], //u, rid, SRR
+      ['clearPastJoinedRooms',    U_  ]  //u, SRR
     ];
 
-    let databaseCallsRef : { [fcall:  string]: [any, string[]]} = {};
+    let databaseCallParams : { [fcall:  string]: [number, string[]]} = {};
+    let _i = 0;
     for (let o of databaseCalls) {
-      databaseCallsRef[o[0].name as string] = o;
+      databaseCallParams[o[0]] = [_i, o[1]];
+      _i++;
     }
 
     router.post('/api/:fcall', (req: Request, res: Response) => {
       let fcall = req.params.fcall;
 
+      let info = this.getAuthInfo(req);
       this.verifyToken(req, (valid) => {
         if (valid) {
           //find mapping for call to database function
-          if (databaseCallsRef.hasOwnProperty(fcall)) {
-            let o = databaseCallsRef[fcall];
-            let func = o[0];
-            let params = o[1].map((x : string) => { req.body[x] });
+          if (databaseCallParams.hasOwnProperty(fcall)) {
+            let body = req.body;
+            body.username = info?.username || '';
 
-            func(...params, (success: boolean, err: string | null, data?: any | null) => {
+            let params = databaseCallParams[fcall][1].map((x : string) => {
+              return body[x];
+            });
+
+            for (let param of params) {
+              if (param == undefined) {
+                let ans = {'success': false, 'error': 'Incomplete API call.'};
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(ans));
+                res.status(400);
+                return;
+              }
+            }
+
+            params.push((success: boolean, err: string | null, data?: any | null) => {
+              console.log('database response received');
 
               let ans = {'success': success, 'error': err, 'data': data};
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify(ans));
-
             });
+
+            switch (fcall) {
+              case 'createRoom': (database.createRoom as any)(...params); break;
+              case 'saveRoomInfo': (database.saveRoomInfo as any)(...params); break;
+              case 'retrieveRoomInfo': (database.retrieveRoomInfo as any)(...params); break;
+              case 'deleteRoomWithInfo': (database.deleteRoomWithInfo as any)(...params); break;
+              case 'retrieveOwnerRoomList': (database.retrieveOwnerRoomList as any)(...params); break;
+              case 'retrievePopularRoomList': (database.retrievePopularRoomList as any)(...params); break;
+              case 'retrieveRoomSearchResults': (database.retrieveRoomSearchResults as any)(...params); break;
+              case 'createWhiteboard': (database.createWhiteboard as any)(...params); break;
+              case 'retrieveWhiteboard': (database.retrieveWhiteboard as any)(...params); break;
+              case 'updateWhiteboard': (database.updateWhiteboard as any)(...params); break;
+              case 'deleteWhiteboard': (database.deleteWhiteboard as any)(...params); break;
+              case 'retrieveFavouriteRoomList': (database.retrieveFavouriteRoomList as any)(...params); break;
+              case 'addFavouriteRoom': (database.addFavouriteRoom as any)(...params); break;
+              case 'deleteFavouriteRoom': (database.deleteFavouriteRoom as any)(...params); break;
+              case 'retrieveFavouriteDrawingList': (database.retrieveFavouriteDrawingList as any)(...params); break;
+              case 'addFavouriteDrawing': (database.addFavouriteDrawing as any)(...params); break;
+              case 'retrieveFavouriteDrawing': (database.retrieveFavouriteDrawing as any)(...params); break;
+              case 'deleteFavouriteDrawing': (database.deleteFavouriteDrawing as any)(...params); break;
+              case 'addRoomMessage': (database.addRoomMessage as any)(...params); break;
+              case 'retrieveRoomMessages': (database.retrieveRoomMessages as any)(...params); break;
+              case 'recordJoinRoom': (database.recordJoinRoom as any)(...params); break;
+              case 'recordDisconnectRoom': (database.recordDisconnectRoom as any)(...params); break;
+              case 'retrievePastJoinedRooms': (database.retrievePastJoinedRooms as any)(...params); break;
+              case 'deletePastJoinedRoom': (database.deletePastJoinedRoom as any)(...params); break;
+              case 'clearPastJoinedRooms': (database.clearPastJoinedRooms as any)(...params); break;
+              default:
+                console.log("Missing fcall " + fcall);
+                let ans = {'success': false, 'error': 'Invalid api call.'};
+                res.setHeader('Content-Type', 'application/json');
+                res.status(403);
+                res.end(JSON.stringify(ans));
+            }
+
           } else {
-            let ans = {'success': false, 'error': 'Invalid api call'};
+            let ans = {'success': false, 'error': 'Invalid api call.'};
             res.setHeader('Content-Type', 'application/json');
             res.status(403);
             res.end(JSON.stringify(ans));
           }
         } else {
-          let ans = {'success': false, 'error': 'You are not authenticated'};
+          let ans = {'success': false, 'error': 'You are not authenticated.'};
           res.setHeader('Content-Type', 'application/json');
-          res.status(403);
+          res.status(401);
           res.end(JSON.stringify(ans));
         }
       });

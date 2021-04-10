@@ -30,6 +30,32 @@ function getCookie(cname: string): string {
   return "";
 }
 
+function api(name: string, data: any, result: (data: any, status: number) => void) {
+  let code = 0;
+  if (['login', 'register', 'guest', 'logout'].indexOf(name) == -1 && !name.startsWith('api/')) {
+    name = 'api/' + name;
+  }
+  fetch("/" + name, {
+    method: 'POST',
+    mode: 'cors',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    credentials: 'same-origin',
+    body: JSON.stringify(data)
+  })
+  .then(res => {
+    code = res.status;
+    return res.json();
+  })
+  .then(data => {
+    result(data, code);
+  })
+  .catch(err => {
+    log('error occured in api call or handler', err);
+  });
+}
+
 function log(...args: any) {
   if (!LOG || (!VERBOSE && args.length > 0 && args[0].verbose)) return;
 
@@ -37,4 +63,4 @@ function log(...args: any) {
   console.log(`[${time}]`, '[LCD-BOARD]', ...args);
 }
 
-export { generateGUIDv4, log, getCookie, setCookie };
+export { generateGUIDv4, log, api, getCookie, setCookie };

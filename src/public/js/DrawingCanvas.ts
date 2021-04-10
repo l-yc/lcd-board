@@ -3,7 +3,7 @@ import paper from 'paper'
 import { log, generateGUIDv4 } from './utils';
 import { DrawEvent, DrawEventAction, DrawData } from '../../types';
 import { SocketServer } from './SocketServer';
-import { UI } from './UI';
+import { WhiteboardUI } from './WhiteboardUI';
 import { DrawingMember } from './DrawingMember';
 import { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector } from './DrawingTool';
 
@@ -21,7 +21,7 @@ export class DrawingCanvas {
 
   readonly htmlCanvas: HTMLElement;
   private socketServer: SocketServer | null = null;
-  private ui: UI | null = null;
+  private ui: WhiteboardUI | null = null;
 
   public constructor(canvas: HTMLElement, tools?: DrawingTool[], colors?: string[]) {
     this.htmlCanvas = canvas;
@@ -694,10 +694,10 @@ export class DrawingCanvas {
     return this.socketServer;
   }
 
-  public setUI(ui: UI) {
+  public setUI(ui: WhiteboardUI) {
     this.ui = ui;
   }
-  public getUI(ui: UI | null) {
+  public getUI(ui: WhiteboardUI | null) {
     return this.ui;
   }
 }

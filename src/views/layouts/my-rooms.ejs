@@ -1,0 +1,71 @@
+<div class="room-editing-panel">
+  <div class="room-list">
+    <h2>My Rooms</h2>
+    <div class="room-item-add">New Room...</div>
+    <div class="room-item-container">
+      <!--<div class="room-item">
+        <span>RoomABC by 123</span>
+        <div class="room-item-buttons"><a>Join</a></div>
+      </div>
+      <div class="room-item">
+        <span>RoomDEF by 456</span>
+        <div class="room-item-buttons"><a>Join</a></div>
+      </div>
+      <div class="room-item">
+        <span>RoomABC by 123</span>
+        <div class="room-item-buttons"><a>Join</a></div>
+      </div>
+      <div class="room-item">
+        <span>RoomDEF by 456</span>
+        <div class="room-item-buttons"><a>Join</a></div>
+      </div>-->
+    </div>
+  </div>
+  <div class="room-editor">
+    <form id="room-edit-form">
+      <h3>Room ID</h3>
+      <input id="rmeId" name="rmeId" type="text" placeholder="Room ID" disabled="true" required>
+      <h3>Room Name</h3>
+      <input id="rmeName" name="rmeName" type="text" placeholder="Room Name" required>
+      <h3>Whiteboards</h3>
+      <div id="rmeWbs" class="room-edit-wb-table">
+        <!--
+        <div class="room-edit-wb-row">
+          <span>WhiteboardA</span>
+          <div class="room-edit-wb-btns"><a>Edit</a><a class="destructive">Delete</a></div>
+        </div>
+        <div class="room-edit-wb-row">
+          <span>WhiteboardB</span>
+          <div class="room-edit-wb-btns"><a>Edit</a><a class="destructive">Delete</a></div>
+        </div>
+        <div class="room-edit-wb-row">
+          <span>WhiteboardC</span>
+          <div class="room-edit-wb-btns"><a>Edit</a><a class="destructive">Delete</a></div>
+        </div>
+        <div class="room-edit-wb-row">
+          <span>WhiteboardD</span>
+          <div class="room-edit-wb-btns"><a>Edit</a><a class="destructive">Delete</a></div>
+        </div>-->
+        <div class="room-edit-wb-row-add">
+          <a>Add</a>
+        </div>
+      </div>
+
+      <h3>Settings</h3>
+      <div class="checkbox-container">
+      <input id="rmeIsPublic" name="rmeIsPublic" type="checkbox" value="1">
+      <label for="rmeIsPublic">Public Room</label>
+      </div>
+      <div class="checkbox-container">
+      <input id="rmeIsActive" name="rmeIsActive" type="checkbox" value="1">
+      <label for="rmeIsActive">Active Room</label>
+      </div>
+      <div class="checkbox-container">
+      <input id="rmeIsPersistent" name="rmeIsPersistent" type="checkbox" value="1">
+      <label for="rmeIsPersistent">Do not automatically mark inactive</label>
+      </div>
+      <input id="rmeSave" name="rmeSave" type="submit" value="Save">
+      <a id="rmeDiscard">Discard / Close</a>
+    </form>
+  </div>
+</div>

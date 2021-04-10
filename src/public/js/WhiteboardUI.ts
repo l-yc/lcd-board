@@ -1,13 +1,13 @@
-import { LegacyRoomInfo } from '../../types';
+import { RoomInfo, LegacyRoomInfo } from '../../types';
 
 import { DrawingCanvas } from './DrawingCanvas';
 import { DrawingMember } from './DrawingMember';
 
 import { DrawingTool, Eraser } from './DrawingTool';
 
-import { getCookie } from './utils';
+import { api, getCookie } from './utils';
 
-export class UI {
+export class WhiteboardUI {
 
   readonly drawingCanvas: DrawingCanvas;
 
@@ -19,7 +19,6 @@ export class UI {
   readonly colorPickerContainer: HTMLElement | null;
   readonly sizePickerContainer: HTMLElement | null;
   readonly sizePickerSlider: HTMLElement | null;
-
 
   constructor(canvas: DrawingCanvas) {
     this.drawingCanvas = canvas;
@@ -270,45 +269,119 @@ export class UI {
 
 
   // login handlers
-  private loginUsername: string | null = null;
-  private loginRoom: string | null = null;
-  public configureLoginForm() {
-    const form = document.querySelector('#login-form') as HTMLFormElement;
-    const submit = document.querySelector('input[type=submit]') as HTMLInputElement;
-    const usernameField = document.getElementById('usernameField') as HTMLInputElement;
-    const roomField = document.getElementById('roomField') as HTMLInputElement;
+  public logout() {
+    this.drawingCanvas.getSocketServer()?.leave();
+  }
+  public logoutAndLeaveRoom() {
 
-    console.log('test');
+    if (this.loginRoomId) {
+      api('recordDisconnectRoom', {id: this.loginRoomId}, (res, status) => {
+        console.log('recDisc', res);
+      });
+      this.loginRoomId = null;
+      this.loginRoom = null;
+      this.loginRoomWhiteboard = null;
+      this.loginRoomInfo = null;
+    }
+
+    this.logout();
+
+    let cover = document.getElementById('wbFSCover') as HTMLDivElement;
+    cover.classList.remove('hidden');
+  }
+
+  private loginRoomInfo: RoomInfo | null = null;
+  private loginUsername: string | null = null;
+  private loginRoomId: string | null = null;
+  private loginRoom: string | null = null;
+  private loginRoomWhiteboard: string | null = null;
+  public configureLoginForm() {
+    const form = document.querySelector('#room-login-form') as HTMLFormElement;
+
+    const usernameField = document.getElementById('wbUsernameField') as HTMLInputElement;
+    const roomField = document.getElementById('wbRoomField') as HTMLInputElement;
+    const roomIdField = document.getElementById('wbRoomIdField') as HTMLInputElement;
+    const whiteboardField = document.getElementById('wbWhiteboardField') as HTMLSelectElement;
+    const submit = document.querySelector('input[type=submit]#wbJoin') as HTMLInputElement;
+
     if (form) form.addEventListener('submit', (event) => {
       event.preventDefault();
-      event.stopImmediatePropagation()
-      console.log('test');
       let data = new FormData(form);
-      let uname = data.get('username') as string;
-      let room = data.get('room') as string;
-      if (!uname || !room) {
-        alert('You need to join a room with a username!');
+      let uname = usernameField.value as string;
+      let roomId = roomIdField.value as string;
+      let room = roomField.value as string;
+      let roomWb = whiteboardField.value as string;
+      if (!uname || !roomId || !roomWb) {
+        alert('You need to choose a whiteboard!');
         return;
       }
 
-      console.log('test');
-
       this.loginUsername = uname;
       this.loginRoom = room;
+      this.loginRoomId = roomId;
+      this.loginRoomWhiteboard = roomWb;
 
       this.drawingCanvas.getSocketServer()?.register(uname);
-      this.drawingCanvas.getSocketServer()?.join(room);
+      this.drawingCanvas.getSocketServer()?.join(roomId + '_' + roomWb);
 
       submit.disabled = true;
       submit.value = "Loading...";
     });
 
-    usernameField.addEventListener('keypress', (e) => {
-      if (e.which == 13) {
-        e.preventDefault();
-        roomField.focus();
-      }
-    });
+    const logoutButton = document.getElementById('disconnectBtn') as HTMLElement;
+    logoutButton.onclick = (e) => this.logout();
+    const leaveRoomButton = document.getElementById('rmwbLeave') as HTMLElement;
+    leaveRoomButton.onclick = (e) => this.logoutAndLeaveRoom();
+  }
+
+  public configureLoginFormFields(username: string, room: RoomInfo) {
+
+    if (this.loginRoomId != room.id) {
+      this.logoutAndLeaveRoom();
+      api('recordJoinRoom', {id: room.id}, (res, status) => {
+        console.log('recJoin', res);
+      });
+    }
+
+    if (room.whiteboards.length == 0) {
+      alert(
+        'No Whiteboards Found!\n'+
+          'Ask the owner to set the room to active, and create a whiteboard before joining.'
+      );
+      return;
+    }
+
+    const cover = document.getElementById('wbFSCover') as HTMLDivElement;
+    cover.classList.add('hidden');
+
+    const loginOverlay = document.getElementById('room-login-overlay') as HTMLDivElement;
+    const isAlreadyLoggedOut = loginOverlay?.style.opacity != '0';
+
+    const usernameField = document.getElementById('wbUsernameField') as HTMLInputElement;
+    const roomField = document.getElementById('wbRoomField') as HTMLInputElement;
+    const roomIdField = document.getElementById('wbRoomIdField') as HTMLInputElement;
+    const whiteboardField = document.getElementById('wbWhiteboardField') as HTMLSelectElement;
+
+
+    whiteboardField.innerHTML = '';
+    for (var i = 0; i < room.whiteboards.length; i++) {
+      var option = document.createElement("option");
+      option.value = room.whiteboards[i].name;
+      option.text = room.whiteboards[i].name;
+      whiteboardField.appendChild(option);
+    }
+
+    if (isAlreadyLoggedOut) {
+      usernameField.value = username;
+      roomField.value = room.displayName + ' by ' + room.owner;
+      roomIdField.value = room.id;
+      whiteboardField.value = room.whiteboards.length > 0 ? room.whiteboards[0].name : '-- No Whiteboard --';
+    }
+    this.loginRoomInfo = room;
+    this.loginUsername = username;
+    this.loginRoom = room.displayName + ' by ' + room.owner;
+    this.loginRoomId= room.id;
+    this.loginRoomWhiteboard = room.whiteboards.length > 0 ? room.whiteboards[0].name : '-- No Whiteboard --';
   }
 
   public hideLoginOverlay() {
@@ -340,24 +413,37 @@ export class UI {
       if (!isAlreadyLoggedOut) {
         this.showLoginOverlay()
 
-        const usernameField = document.getElementById('usernameField') as HTMLInputElement;
-        const roomField = document.getElementById('roomField') as HTMLInputElement;
-        const submit = document.querySelector('input[type=submit]') as HTMLInputElement;
+        const usernameField = document.getElementById('wbUsernameField') as HTMLInputElement;
+        const roomField = document.getElementById('wbRoomField') as HTMLInputElement;
+        const roomIdField = document.getElementById('wbRoomIdField') as HTMLInputElement;
+        const whiteboardField = document.getElementById('wbWhiteboardField') as HTMLInputElement;
+        const submit = document.querySelector('input[type=submit]#wbJoin') as HTMLSelectElement;
 
         if (usernameField && roomField) {
           usernameField.value = this.loginUsername || '';
           roomField.value = this.loginRoom || '';
+          roomIdField.value = this.loginRoomId || '';
+          whiteboardField.value = this.loginRoomWhiteboard || '';
         }
 
-        usernameField.disabled = false;
-        roomField.disabled = false;
+        whiteboardField.disabled = false;
         submit.disabled = false;
-        submit.value = "Login";
+        submit.value = "Launch Whiteboard";
 
         if (options && !options.userInitiated) {
-            alert('error: lost connection to the server');
+          alert('error: lost connection to the server');
         }
       }
     }
+    if (this.loginRoomId) {
+      api('retrieveRoomInfo', {id: this.loginRoomId}, (res, status) => {
+        if (res.success) {
+          if (this.loginUsername) {
+            this.configureLoginFormFields(this.loginUsername, res.data);
+          }
+        }
+      })
+    }
+
   }
 };
