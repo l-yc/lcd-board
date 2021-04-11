@@ -171,6 +171,7 @@ function configureTabBar() {
   const logoutBtn = document.getElementsByClassName('logout-btn')[0] as HTMLElement;
   if (logoutBtn) logoutBtn.onclick = (e) => {
     whiteboardUi?.logoutAndLeaveRoom();
+    roomEditorUi?.setupEditRoom(null);
     api('logout', {}, (res, status) => {
       log(status, res, getUsername());
       configureLoginForm();
