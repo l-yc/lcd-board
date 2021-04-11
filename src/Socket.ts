@@ -52,6 +52,15 @@ class Socket {
     });
   }
 
+  public forceLeave() {
+    if (this.room) {
+      let r = this.room;
+      console.log('%s kicked from %s', this.socket.id, r);
+      this.onLeave();
+      this.socket.emit('kicked', {room: r});
+    }
+  }
+
   private onLeave(): void {
     if (this.room) {
       this.socket.leave(this.room);
@@ -251,21 +260,23 @@ class SocketServer {
 
     // leave
     if (user.room) {
-      let r = this.rooms.get(user.room) as LegacyRoom;
-      let idx = r.users.indexOf(socketId);
-      r.users.splice(idx, 1);
+      let r = this.rooms.get(user.room);
+      if (r) {
+        let idx = r.users.indexOf(socketId);
+        r.users.splice(idx, 1);
 
-      this.broadcastRoomInfo(user.room);
+        this.broadcastRoomInfo(user.room);
 
 
-      //auto cleanup if necessary
-      if (r.users.length == 0) {
-        //though this shouldn't happen, we reset the timeout timer if one exists.
-        if (r.cleanupTimeout) clearTimeout(r.cleanupTimeout);
+        //auto cleanup if necessary
+        if (r.users.length == 0) {
+          //though this shouldn't happen, we reset the timeout timer if one exists.
+          if (r.cleanupTimeout) clearTimeout(r.cleanupTimeout);
 
-        //allow for a 5 minute buffer before cleaning up
-        const userRoom = user.room;
-        r.cleanupTimeout = setTimeout(() => this.deleteRoomIfEmpty(userRoom), 300000);
+          //allow for a 5 minute buffer before cleaning up
+          const userRoom = user.room;
+          r.cleanupTimeout = setTimeout(() => this.deleteRoomIfEmpty(userRoom), 300000);
+        }
       }
     }
 
@@ -295,11 +306,13 @@ class SocketServer {
         let _terms = room.split('_');
         let roomId = _terms.shift()!;
         let whiteboardName = _terms.join('_');
+        console.log('getting room data %s from database', room);
         database.retrieveWhiteboard(roomId, whiteboardName, (s, e, data) => {
-          console.log('got room data from database');
-          console.log('parsing data from database', data?.drawDataList.length);
           let r = this.rooms.get(room);
+          console.log('got room data result from database')
           if (s) {
+            console.log('got room data from database');
+            console.log('parsing data from database', data?.drawDataList.length);
             let h: DrawDataLinkedNode | null = null;
             let t: DrawDataLinkedNode | null = null;
             let p: DrawDataLinkedNode | null = null;
@@ -328,19 +341,29 @@ class SocketServer {
             console.log('reload sanity check', this.getRoomWhiteboard(room).drawDataList.length);
 
             if (r) {
-              r.locked = data?.locked || false;
-              r.saveFunc = () => {
+              const _r = r;
+              _r.locked = data?.locked || false;
+              _r.saveFunc = () => {
                 if (data) {
                   data.drawDataList = this.getRoomWhiteboard(room).drawDataList;
                   database.updateWhiteboard(data.name, data, (s, e) => {
                     console.log('autosave data from ' + room + ' to database', s, e);
+                    if (!s) {
+                      _r.saveFunc = undefined;
+                      if (_r.autosaveInterval) clearInterval(_r.autosaveInterval);
+                      this.deleteRoomAndKickUsers(room);
+                    }
                   });
                 }
               }
-              r.autosaveInterval = setInterval(r.saveFunc, 60000);
+              _r.autosaveInterval = setInterval(_r.saveFunc, 60000);
             }
           }
           if (readyHandler) readyHandler();
+          if (!s) {
+            console.log('failed to load room data %s from database, kicking connected users soon', room);
+            setTimeout(() => this.deleteRoomAndKickUsers(room), 3000);
+          }
         });
       } else {
         console.log('got room data from memory');
@@ -352,6 +375,26 @@ class SocketServer {
     user.room = room;
   }
 
+  public deleteRoomAndKickUsers(room: string | null): void {
+    if (room) {
+      let r = this.rooms.get(room);
+      if (r) {
+        console.log("force cleanup: deleting room %s", room);
+
+        let sF = this.rooms.get(room)?.saveFunc;
+        if (sF) sF();
+    
+        let asI = this.rooms.get(room)?.autosaveInterval;
+        if (asI) clearInterval(asI);
+
+        this.rooms.delete(room);
+
+        for (let u of r.users) {
+          this.sockets.get(u)?.forceLeave();
+        }
+      }
+    }
+  }
   public deleteRoomIfEmpty(room: string | null): void {
     if (room && this.rooms.get(room)?.users.length == 0) {
       console.log("cleanup: deleting room %s", room);

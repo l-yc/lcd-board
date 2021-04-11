@@ -476,7 +476,7 @@ export class WhiteboardUI {
         submit.value = "Launch Whiteboard";
 
         if (options && !options.userInitiated) {
-          alert('error: lost connection to the server');
+          alert('Error: Whiteboard Connection Lost');
         }
       }
     }

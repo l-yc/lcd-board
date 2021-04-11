@@ -567,6 +567,9 @@ class Database {
   }
 
   public updateWhiteboard(oldName: string, whiteboard: Whiteboard, handler: SuccessReturnResponse) {
+    if (this.onWhiteboardUpdateNotifyHandler)
+      this.onWhiteboardUpdateNotifyHandler(whiteboard.roomId, oldName);
+
     let failHandler = (err: string) => {
       handler(false, err);
     }
@@ -612,12 +615,21 @@ class Database {
   }
 
   public deleteWhiteboard(roomId: string, name: string, handler: SuccessReturnResponse) {
+    if (this.onWhiteboardUpdateNotifyHandler)
+      this.onWhiteboardUpdateNotifyHandler(roomId, name);
+
     this.performWriteTransaction(
       [
         ['DELETE FROM Whiteboard WHERE roomId = ? AND name = ?', [roomId, name]]
       ],
       handler
     );
+  }
+
+
+  private onWhiteboardUpdateNotifyHandler: ((roomId: string, whiteboard: string) => void) | null = null;
+  public setOnWhiteboardUpdateNotifyHandler(handler: ((roomId: string, whiteboard: string) => void) | null) {
+    this.onWhiteboardUpdateNotifyHandler = handler;
   }
 
   //

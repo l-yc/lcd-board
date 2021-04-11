@@ -31,7 +31,15 @@ export class SocketServer {
     this.socket.on('disconnect', () => {
       log('disconnected :<');
       this.wasLocked = false;
+      this.room = null;
       ui?.updateConnectionStatus(false);
+      ui?.performLogout({userInitiated: false});
+    });
+
+    this.socket.on('kicked', () => {
+      log('kiccked from room');
+      this.wasLocked = false;
+      this.room = null;
       ui?.performLogout({userInitiated: false});
     });
 
