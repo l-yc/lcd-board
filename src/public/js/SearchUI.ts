@@ -85,7 +85,7 @@ export class SearchUI {
           this.parseAndPerformSearch(this.searchBar.value);
         }, 300);
       }
-      window.history.replaceState( {} , document.title, location.origin + location.pathname);
+      window.history.replaceState({}, document.title, location.origin + location.pathname);
     }
     this.searchBar.addEventListener('search', (e) => {
       if (this.searchBar.value == '')

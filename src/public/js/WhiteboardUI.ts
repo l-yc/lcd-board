@@ -13,6 +13,7 @@ export class WhiteboardUI {
 
   readonly toolStatus  : HTMLElement | null;
   readonly membersStatus: HTMLElement | null;
+  readonly lockedStatus: HTMLElement | null;
   readonly membersContainer: HTMLElement | null;
   readonly topBar: HTMLElement | null;
   readonly toolPickerContainer: HTMLElement | null;
@@ -27,6 +28,7 @@ export class WhiteboardUI {
     //initialize all html elements
     this.toolStatus   = document.getElementById('toolStatus');
     this.membersStatus = document.getElementById('membersStatus');
+    this.lockedStatus = document.getElementById('lockedStatus');
     this.membersContainer = document.getElementById('members-container')
     this.topBar = document.getElementById("top-banner-container");
     this.toolPickerContainer = document.getElementById('tool-picker-container');
@@ -87,7 +89,6 @@ export class WhiteboardUI {
       sizeSlider.value = '' + size;
     }
   }
-
 
   private cachedRoomInfo: LegacyRoomInfo | null = null;
   public updateRoomInfo(info: LegacyRoomInfo) {
@@ -286,6 +287,7 @@ export class WhiteboardUI {
 
     this.logout();
 
+    window.history.replaceState({}, document.title, location.origin + location.pathname);
     let cover = document.getElementById('wbFSCover') as HTMLDivElement;
     cover.classList.remove('hidden');
   }
@@ -320,6 +322,14 @@ export class WhiteboardUI {
       this.loginRoom = room;
       this.loginRoomId = roomId;
       this.loginRoomWhiteboard = roomWb;
+      
+      for (let wb of this.loginRoomInfo?.whiteboards || []) {
+        if (wb.name == roomWb) {
+          if (wb.locked) this.lockedStatus?.classList.remove('hidden');
+          else this.lockedStatus?.classList.add('hidden');
+          break;
+        }
+      }
 
       this.drawingCanvas.getSocketServer()?.register(uname);
       this.drawingCanvas.getSocketServer()?.join(roomId + '_' + roomWb);
@@ -362,6 +372,8 @@ export class WhiteboardUI {
     const roomIdField = document.getElementById('wbRoomIdField') as HTMLInputElement;
     const whiteboardField = document.getElementById('wbWhiteboardField') as HTMLSelectElement;
 
+    const favouriteA = document.getElementById('favouriteBtn') as HTMLLinkElement;
+    const permalinkA = document.getElementById('roomJoinLink') as HTMLLinkElement;
 
     whiteboardField.innerHTML = '';
     for (var i = 0; i < room.whiteboards.length; i++) {
@@ -375,6 +387,9 @@ export class WhiteboardUI {
       usernameField.value = username;
       roomField.value = room.displayName + ' by ' + room.owner;
       roomIdField.value = room.id;
+      let link = location.origin + location.pathname + '?room-join=' + encodeURIComponent(room.id);
+      permalinkA.href = link;
+      permalinkA.innerText = link;
       whiteboardField.value = room.whiteboards.length > 0 ? room.whiteboards[0].name : '-- No Whiteboard --';
     }
     this.loginRoomInfo = room;
@@ -382,6 +397,26 @@ export class WhiteboardUI {
     this.loginRoom = room.displayName + ' by ' + room.owner;
     this.loginRoomId= room.id;
     this.loginRoomWhiteboard = room.whiteboards.length > 0 ? room.whiteboards[0].name : '-- No Whiteboard --';
+
+    favouriteA.style.visibility = 'hidden';
+    let id = room.id;
+    api('isFavouriteRoom', {id: id}, (res, status) => {
+      if (res.success) {
+        favouriteA.style.visibility = 'visible';
+        favouriteA.innerText = res.data ? 'Unfavourite' : 'Favourite';
+        favouriteA.onclick = (e) => {
+          if (favouriteA.innerText == 'Unfavourite') {
+            api('deleteFavouriteRoom', {id: id}, (res, status) => {
+                favouriteA.innerText = res.success ? 'Favourite' : 'Unfavourite';
+            });
+          } else {
+            api('addFavouriteRoom', {id: id}, (res, status) => {
+                favouriteA.innerText = res.success ? 'Unfavourite' : 'Favourite';
+            });
+          }
+        }
+      }
+    });
   }
 
   public hideLoginOverlay() {

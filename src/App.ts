@@ -211,6 +211,7 @@ class App {
       ['deleteWhiteboard',   ID_N], //id, name, SRR
       ['retrieveFavouriteRoomList', U_], //u, DRR
       ['addFavouriteRoom',          U_ID], //u, rid, SRR
+      ['isFavouriteRoom' ,          U_ID], //u, rid, DRR
       ['deleteFavouriteRoom',       U_ID], //u, rid, SRR
       ['retrieveFavouriteDrawingList', U_      ], //u, DRR
       ['addFavouriteDrawing',          U_N_OBJ ], //u, name, wbinfo, SRR
@@ -279,6 +280,7 @@ class App {
               case 'deleteWhiteboard': (database.deleteWhiteboard as any)(...params); break;
               case 'retrieveFavouriteRoomList': (database.retrieveFavouriteRoomList as any)(...params); break;
               case 'addFavouriteRoom': (database.addFavouriteRoom as any)(...params); break;
+              case 'isFavouriteRoom': (database.isFavouriteRoom as any)(...params); break;
               case 'deleteFavouriteRoom': (database.deleteFavouriteRoom as any)(...params); break;
               case 'retrieveFavouriteDrawingList': (database.retrieveFavouriteDrawingList as any)(...params); break;
               case 'addFavouriteDrawing': (database.addFavouriteDrawing as any)(...params); break;

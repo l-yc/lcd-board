@@ -313,7 +313,11 @@ class DrawingTool {
 
   protected processDrawEvent(event: DrawEvent): DrawEventProcessingResult {
     if (this.canvas) {
-      this.canvas.processDrawEvent(event);
+      if (this.canvas.getSocketServer()?.getDrawingLocked() !== true) {
+        this.canvas.processDrawEvent(event);
+      } else {
+        log({verbose: true}, "warning: " + this.id + " can't perform DrawEvents as the drawing is locked remotely!")
+      }
     } else {
       log("warning: " + this.id + " can't perform DrawEvents as a drawing canvas is not linked!")
     }

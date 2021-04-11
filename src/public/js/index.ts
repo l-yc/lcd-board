@@ -23,25 +23,34 @@ let dashboardUi: DashboardUI | null;
 let searchUi: SearchUI | null;
 let roomEditorUi: RoomEditorUI | null;
 
+let joinRoomHandler = (roomId: string, notify?: boolean) => {
+  api('retrieveRoomInfo', {id: roomId}, (res, status) => {
+    console.log(res);
+    if (res.success) {
+      tabBtnHandlers['whiteboard']();
+      whiteboardUi?.configureLoginFormFields(getUsername(), res.data);
+    } else if (notify !== false) {
+      alert('Error: ' + res.error);
+    }
+  });
+}
+
 window.onload = () => {
+
+  const canvas = document.getElementById('myCanvas');
+  if (!canvas) {
+    log("something's terribly wrong: the canvas is missing. aborting operations.");
+    alert("Catastrophic error: Missing Drawing Canvas");
+    return;
+  }
+
+  paper.setup('myCanvas');
+  log("configured paper.js canvas");
 
   //Universal setup
   configureTabBar();
   configureLoginForm();
   updateLoginOverlayState();
-
-  let joinRoomHandler = (roomId: string) => {
-    api('retrieveRoomInfo', {id: roomId}, (res, status) => {
-      console.log(res);
-      if (res.success) {
-        tabBtnHandlers['whiteboard']();
-        whiteboardUi?.configureLoginFormFields(getUsername(), res.data);
-      } else {
-        alert('Error: ' + res.error);
-      }
-    });
-  }
-
 
   //Dashboard UI Setup
   dashboardUi = new DashboardUI();
@@ -59,9 +68,6 @@ window.onload = () => {
     searchUi?.configureSearchBar();
   }
 
-  if (new URLSearchParams(location.search).get("roomSearch") != null) {
-    tabBtnHandlers['room-search']();
-  }
 
   //My Rooms & Room Editor UI
   roomEditorUi = new RoomEditorUI();
@@ -72,14 +78,6 @@ window.onload = () => {
   }
 
   //Drawing UI Setup
-  const canvas = document.getElementById('myCanvas');
-  if (!canvas) {
-    log("something's terribly wrong: the canvas is missing. aborting operations.");
-    return;
-  }
-
-  paper.setup('myCanvas');
-  log("configured paper.js canvas");
 
   const tools = [
     new Pen(),
@@ -112,6 +110,8 @@ window.onload = () => {
   whiteboardUi.configurePickers();
   whiteboardUi.configureLoginForm();
 
+  //Done 
+  selectTabByParams();
 };
 
 
@@ -163,6 +163,18 @@ function configureTabBar() {
   tabBtnHandlers[Object.keys(tabBtnHandlers)[0]]();
 };
 
+function selectTabByParams() {
+  let params = new URLSearchParams(location.search);
+  let param: string | null
+  if (param = params.get("room-search")) {
+    tabBtnHandlers['room-search']();
+  } else if (param = params.get("room-join")) {
+    tabBtnHandlers['whiteboard']();
+    joinRoomHandler(param, false);
+  } else {
+    tabBtnHandlers['dashboard']();
+  }
+}
 
 function configureLoginForm() {
   const overlay = document.getElementById('account-login-overlay') as HTMLElement;
@@ -242,7 +254,7 @@ function configureLoginForm() {
         if (currentLoginFormMode == 'register') currentLoginFormMode = 'login';
         dashboardUi?.updateCurrentLoginMode(currentLoginFormMode);
 
-        tabBtnHandlers['dashboard']();
+        selectTabByParams();
 
       } else {
         submitBtn.disabled = false;

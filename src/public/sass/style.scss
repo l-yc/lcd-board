@@ -83,7 +83,6 @@ code {
   color: var(--error-red);
   ;
 }
-
 .hidden {
   display: none !important;
 }
@@ -664,6 +663,14 @@ input.textFieldOption {
   width: 50px;
 }
 
+.rmwb-bottom-link {
+  position: absolute;
+  text-align: center;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+}
+
 /* login view elements */
 .login-overlay {
   position: absolute;
@@ -711,6 +718,10 @@ input.textFieldOption {
 .login-overlay form a {
   text-align: center;
   padding: 4px;
+  margin-top: 0px;
+  margin-bottom: 0px;
+  height: 30px;
+  line-height: 30px;
 }
 
 .login-overlay form input[type=text], .login-overlay form input[type=password] {

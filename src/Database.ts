@@ -746,6 +746,19 @@ class Database {
     ], handler);
   }
 
+  public isFavouriteRoom(username: string, roomId: string, handler: DatabaseReturnResponse<boolean>) {
+    this.performRead([
+      "SELECT EXISTS(SELECT * FROM FavouriteRooms WHERE username = ? AND roomID = ?) as 'results'",
+      [username, roomId]
+    ], (s, e, rows) => {
+      if (s && rows) {
+        handler(s, e, !!rows[0]['results']);
+      } else {
+        handler(s && rows != null, e, null);
+      }
+    });
+  }
+
   public deleteFavouriteRoom(username: string, roomId: string, handler: SuccessReturnResponse) {
     this.performWriteTransaction([
       ["DELETE FROM FavouriteRooms WHERE username = ? AND roomID = ?;", [username, roomId]]

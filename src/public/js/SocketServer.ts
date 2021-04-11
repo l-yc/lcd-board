@@ -15,6 +15,8 @@ export class SocketServer {
 
   public ui: WhiteboardUI | null = null;
 
+  private wasLocked: boolean = false;
+
   constructor(ui?: WhiteboardUI) {
     this.socket = io({
       autoConnect: true,
@@ -28,12 +30,15 @@ export class SocketServer {
 
     this.socket.on('disconnect', () => {
       log('disconnected :<');
+      this.wasLocked = false;
       ui?.updateConnectionStatus(false);
       ui?.performLogout({userInitiated: false});
     });
 
     this.socket.on('room whiteboard', (whiteboard: LegacyWhiteboard) => { // after joining
       log('received room whiteboard:', whiteboard);
+      if (whiteboard.locked) this.wasLocked = true;
+
       let deGroups: { [group: string]: DrawingTool } = {};
       let cnt = 0;
       const _ui = ui;
@@ -110,6 +115,7 @@ export class SocketServer {
       this.socket.emit('leave', room);
       this.room = null;
     }
+    this.wasLocked = false;
     this.ui?.performLogout({userInitiated: true});
   }
 
@@ -129,5 +135,9 @@ export class SocketServer {
 
   getRoom() {
     return this.room;
+  }
+
+  getDrawingLocked() {
+    return this.wasLocked;
   }
 };

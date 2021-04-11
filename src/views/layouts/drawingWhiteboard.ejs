@@ -2,7 +2,8 @@
   <div id="status-container">
     <div id="toolStatus" style="border: 2px solid black"><span><span class="las la-pen-alt"></span>Pen</span></div>
     <div id="membersStatus" style="border: 2px solid black"><span><span class="las la-user-alt-slash"></span>0 online</span></div>
-    <div id="disconnectBtn" class="" style="border: 2px solid red"><span><span class="las la-sign-out-alt"></span>Close</span></div>
+    <div id="lockedStatus" class="hidden" style="border: 2px solid #08f"><span><span class="las la-lock"></span>Locked</span></div>
+    <div id="disconnectBtn" style="border: 2px solid red"><span><span class="las la-sign-out-alt"></span>Close</span></div>
   </div>
   <div id="members-container"><span></span></div>
   <div id="tool-picker-container" class="picker-container"></div>
@@ -22,8 +23,10 @@
         <option value="" disabled selected>-- Select Whiteboard --</option>
     </select>
     <input id="wbJoin" name="wbJoin" type="submit" value="Load Whiteboard">
+    <a id="favouriteBtn">Favourite</a>
     <a id="rmwbLeave">Leave Room</a>
   </form>
+  <span class="rmwb-bottom-link">Room link: <a id="roomJoinLink"></a></span>
   <div id="wbFSCover" class="fullscreen-overlay-cover">
       <span>
           <h2>Join a room first to load a whiteboard!</h2>
