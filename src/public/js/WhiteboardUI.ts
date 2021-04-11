@@ -344,6 +344,11 @@ export class WhiteboardUI {
     leaveRoomButton.onclick = (e) => this.logoutAndLeaveRoom();
   }
 
+  private currentLoginMode: 'login' | 'guest' = 'login';
+  public updateCurrentLoginMode(m: 'login' | 'guest') {
+    this.currentLoginMode = m;
+  }
+
   public configureLoginFormFields(username: string, room: RoomInfo) {
 
     if (this.loginRoomId != room.id) {
@@ -398,9 +403,13 @@ export class WhiteboardUI {
     this.loginRoomId= room.id;
     this.loginRoomWhiteboard = room.whiteboards.length > 0 ? room.whiteboards[0].name : '-- No Whiteboard --';
 
+
+
+    favouriteA.classList.remove('hidden');
     favouriteA.style.visibility = 'hidden';
+
     let id = room.id;
-    api('isFavouriteRoom', {id: id}, (res, status) => {
+    if (this.currentLoginMode == 'login') api('isFavouriteRoom', {id: id}, (res, status) => {
       if (res.success) {
         favouriteA.style.visibility = 'visible';
         favouriteA.innerText = res.data ? 'Unfavourite' : 'Favourite';
@@ -417,6 +426,7 @@ export class WhiteboardUI {
         }
       }
     });
+    else favouriteA.classList.add('hidden');
   }
 
   public hideLoginOverlay() {

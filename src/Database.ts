@@ -137,7 +137,6 @@ class Database {
                 ["INSERT INTO RegisteredUserConnectionTokens VALUES (?, ?);", [username, token]],
                 ["CALL updateUserExpiryDate(?);", [username]]
               ], (success, error) => {
-                if (success) this.cacheValidLoginToken(username, token);
                 handler(success, error, token);
               });
 
@@ -155,18 +154,22 @@ class Database {
   public register(username: string, password: string, handler: TokenReturnResponse) {
     const passwordHash = bcrypt.hashSync(password, 10);
     this.performRead(
-      ["SELECT * FROM User WHERE username = ?", [username]],
+      ["SELECT u.isGuest, gu.connectionToken as 'guestConnectionToken' FROM User u " +
+        "LEFT JOIN GuestUser gu ON u.username = gu.username " +
+        "WHERE u.username = ?;", [username]],
       (s, e, rows) => {
-        if (rows?.length == 0) {
+        if (rows && (rows.length == 0 ||
+                     (rows[0]['isGuest'] && !rows[0]['guestConnectionToken']))
+           ) {
           let token = this.generateLoginToken();
 
           this.performWriteTransaction([
-            ["INSERT INTO User VALUES (?, NULL, FALSE); ", [username]],
+            ["INSERT INTO User VALUES (?, NULL, FALSE) ON DUPLICATE KEY UPDATE isGuest=FALSE;", [username]],
             ["INSERT INTO RegisteredUser VALUES (?, ?);", [username, passwordHash]],
             ["INSERT INTO RegisteredUserConnectionTokens VALUES (?, ?);", [username, token]],
+            ["DELETE FROM GuestUser WHERE username = ?;", [username]],
             ["CALL updateUserExpiryDate(?)", [username]]
           ], (success, error) => {
-            if (success) this.cacheValidLoginToken(username, token);
             handler(success, error, token);
           });
           return;
@@ -190,7 +193,6 @@ class Database {
               ["DELETE FROM RegisteredUserConnectionTokens WHERE username = ? AND connectionToken = ?", [username, token]],
             ["CALL updateUserExpiryDate(?);", [username]]
           ], (success, error) => {
-            if (success) this.uncacheValidLoginToken(username, token);
             handler(success, error);
           });
 
@@ -214,7 +216,6 @@ class Database {
             ["INSERT INTO GuestUser VALUES (?, ?);", [username, token]],
             ["CALL updateUserExpiryDate(?);", [username]]
           ], (success, error) => {
-            if (success) this.cacheValidLoginToken(username, token);
             handler(success, error, token);
           });
           return;
@@ -230,12 +231,13 @@ class Database {
                     ["CALL updateUserExpiryDate(?);", [username]],
                     ["UPDATE GuestUser SET connectionToken = ? WHERE username = ?", [token, username]]
                   ], (success, error) => {
-                    if (success) this.cacheValidLoginToken(username, token);
                     handler(success, error, token);
                   });
+                } else {
+                  handler(false, e || 'Username taken by another guest session.', null);
                 }
               } else {
-                handler(false, e || 'Username taken by another guest session.', null);
+                handler(false, e || 'Username taken by a registered account.', null);
               }
             });
 
@@ -249,10 +251,6 @@ class Database {
   }
 
   public verifyLoginToken(username: string, token: string, handler: SuccessReturnResponse) {
-    if (this.checkCacheValidLoginToken(username,token)) {
-      handler(true, null);
-      return;
-    }
     this.performRead(
       ["CALL verifyConnectionToken(?, ?);", [username, token]],
       (s, e, rows) => {
@@ -264,46 +262,6 @@ class Database {
         }
       }
     );
-  }
-
-  private validLoginTokenCache = new Set<string>();
-  private validLoginTokenCacheLastUpdate: {[username: string]: Date} = {};
-  private checkCacheValidLoginToken(username: string, token: string): boolean {
-    let item = username + '_' + token;
-    let ans = this.validLoginTokenCache.has(item);
-    if (ans) {
-      this.cacheValidLoginToken(username, token);
-
-      let prevUpdate = this.validLoginTokenCacheLastUpdate[item];
-      if (prevUpdate == null || Date.now() - prevUpdate.getTime() > 300*1000) {
-        console.log('updating expiry date for ' + username + ' - from cache check');
-        this.performWriteTransaction([["CALL updateUserExpiryDate(?);", [username]]], () => {}); //result of this call need not be known
-      }
-      this.validLoginTokenCacheLastUpdate[item] = new Date();
-    }
-    return ans;
-  }
-  private cacheValidLoginToken(username: string, token: string) {
-    //reset order (sets are insertion ordered in ES6+)
-    let item = username + '_' + token;
-    if (this.validLoginTokenCache.has(item))
-      this.validLoginTokenCache.delete(item);
-    this.validLoginTokenCache.add(item);
-
-    //clear old unused tokens
-    let exceedCount = Math.max(this.validLoginTokenCache.size - 1000, 0)
-    let en = this.validLoginTokenCache.entries();
-    for (let i = 0; i < exceedCount; i++) {
-      this.validLoginTokenCache.delete(en.next().value);
-    }
-  }
-  private uncacheValidLoginToken(username: string, token: string) {
-    let item = username + '_' + token;
-    if (this.validLoginTokenCache.has(item))
-      this.validLoginTokenCache.delete(item);
-
-    if (this.validLoginTokenCacheLastUpdate.hasOwnProperty(item))
-      delete this.validLoginTokenCacheLastUpdate[item];
   }
 
   //
@@ -412,16 +370,10 @@ class Database {
   }
   public retrievePopularRoomList(username: string, handler: DatabaseReturnResponse<{roomId: string, displayName: string, owner: string}[]>) { 
     this.performRead([
-      "SELECT r.roomID, r.name, r.ownerUsername " +
-      "FROM Room r LEFT JOIN ActiveRoom ar ON r.roomID = ar.roomID " +
-      "LEFT JOIN PastJoin pj ON r.roomID = pj.roomID AND username = ? " +
-      "WHERE isPublic = TRUE OR pj.timestamp IS NOT NULL " +
-      "ORDER BY popularityRating DESC " +
-      "LIMIT 15;",
-      [username]
+      "CALL popularRooms(?);", [username]
     ], (s, e, rows) => {
       if (s && !e && rows) {
-        let returnList = rows.map((row: any) => {
+        let returnList = rows[0].map((row: any) => {
           return {roomId: row["roomID"], displayName: row["name"], owner: row["ownerUsername"]};
         });
         handler(true, null, returnList);

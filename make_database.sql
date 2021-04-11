@@ -37,15 +37,15 @@ CREATE TABLE Room (
     roomID varchar(24),
     name varchar(255),
     isPublic boolean,
-    ownerUsername varchar(20),
+    ownerUsername varchar(20) NOT NULL,
     PRIMARY KEY (roomID),
-    CONSTRAINT R_U_FK FOREIGN KEY (ownerUsername) references User (username) ON UPDATE CASCADE
+    CONSTRAINT R_U_FK FOREIGN KEY (ownerUsername) references User (username) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE TABLE ActiveRoom (
     roomID varchar(24),
     persistent boolean,
-    popularityRating int,
+    popularityRating int DEFAULT 0,
     PRIMARY KEY (roomID),
     CONSTRAINT AR_FK FOREIGN KEY (roomID) references Room (roomID) ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -115,6 +115,7 @@ CREATE TABLE FavouriteRooms (
 );
 
 /* stored procedures for convenient updates */
+
 DELIMITER ;;
 CREATE PROCEDURE updateUserExpiryDate(IN uname varchar(20))
 BEGIN
@@ -152,9 +153,12 @@ CREATE PROCEDURE recordJoinRoom(IN uname varchar(20), IN rID varchar(24))
 BEGIN
     INSERT IGNORE INTO CurrentJoin VALUES (uname, rID);
 
-    /* add to history */
-    INSERT INTO PastJoin VALUES (uname, rID, NOW())
-    ON DUPLICATE KEY UPDATE timestamp = NOW();
+    /* update last join time */
+    IF (SELECT isGuest FROM User WHERE username = uname) = FALSE THEN
+        INSERT INTO PastJoin VALUES (uname, rID, NOW())
+        ON DUPLICATE KEY UPDATE timestamp = NOW();
+    END IF;
+
 END;;
 DELIMITER ;
 
@@ -164,9 +168,31 @@ BEGIN
     DELETE FROM CurrentJoin WHERE username = uname AND roomID = rID;
 
     /* update last join time */
-    INSERT INTO PastJoin VALUES (uname, rID, NOW())
-    ON DUPLICATE KEY UPDATE timestamp = NOW();
+    IF (SELECT isGuest FROM User WHERE username = uname) = FALSE THEN
+        INSERT INTO PastJoin VALUES (uname, rID, NOW())
+        ON DUPLICATE KEY UPDATE timestamp = NOW();
+    END IF;
 
+END;;
+DELIMITER ;
+
+DELIMITER ;;
+CREATE PROCEDURE popularRooms (
+    IN uname varchar(20)
+)
+BEGIN
+    SELECT r.roomID, r.name, r.ownerUsername
+    FROM Room r JOIN ActiveRoom ar ON r.roomID = ar.roomID
+    WHERE
+        r.isPublic = TRUE OR
+        r.ownerUsername = uname OR
+        r.roomID IN (
+            SELECT roomID FROM PastJoin pj WHERE pj.username = uname
+            UNION
+            SELECT roomID FROM FavouriteRooms fvRm WHERE fvRm.username = uname
+        )
+    ORDER BY popularityRating DESC
+    LIMIT 15;
 END;;
 DELIMITER ;
 
@@ -189,20 +215,26 @@ BEGIN
         SELECT r.roomID, r.name, r.isPublic, r.ownerUsername
         FROM Room r
         LEFT JOIN PastJoin pj
-            ON r.roomID = pj.roomID AND username = uname
+            ON r.roomID = pj.roomID
         LEFT JOIN Whiteboard wb
             ON r.roomID = wb.roomID
         WHERE
             (
                 isPublic = TRUE OR
-                pj.timestamp IS NOT NULL OR
-                r.ownerUsername = uname
+                r.ownerUsername = uname OR
+                r.roomID IN (
+                    SELECT roomID FROM PastJoin pj WHERE pj.username = uname
+                    UNION
+                    SELECT roomID FROM FavouriteRooms fvRm WHERE fvRm.username = uname
+                )
             ) AND (
                 IF(roomFilter IS NULL,       TRUE, r.name          LIKE CONCAT('%', roomFilter, '%'))       AND
                 IF(ownerFilter IS NULL,      TRUE, r.ownerUsername LIKE CONCAT('%', ownerFilter, '%'))      AND
                 IF(whiteboardFilter is NULL, TRUE, wb.name         LIKE CONCAT('%', whiteboardFilter, '%')) AND
                 IF(public is NULL,           TRUE, r.isPublic = public)                                     AND
-                IF(active IS NULL,           TRUE, active = EXISTS (SELECT * FROM ActiveRoom ar WHERE ar.roomID = r.roomID))
+                IF(active IS NULL,           TRUE, active =
+                    EXISTS (SELECT * FROM ActiveRoom ar WHERE ar.roomID = r.roomID)
+                )
             )
         GROUP BY r.roomID
         ORDER BY IF(r.isPublic, 1, 0), -IFNULL(pj.timestamp,0), r.name, r.ownerUsername
@@ -213,21 +245,29 @@ DELIMITER ;
 
 
 
-/* triggers for derived attributes */
+/* triggers and events for database */
+SET GLOBAL event_scheduler = ON;
+
+/* popularityRating */
+
+/* update on join activity change */
+DROP TRIGGER IF EXISTS PopularityRatingUpdateTrigger1;
+DROP TRIGGER IF EXISTS PopularityRatingUpdateTrigger2;
+DROP TRIGGER IF EXISTS PopularityRatingUpdateTrigger3;
 
 CREATE TRIGGER PopularityRatingUpdateTrigger1
 AFTER INSERT
 ON PastJoin FOR EACH ROW
 UPDATE ActiveRoom
 SET popularityRating = popularityRating + 1
-WHERE NEW.roomID = ActiveRoom.roomID;
+WHERE NEW.roomID = ActiveRoom.roomID AND TIMESTAMPDIFF(MONTH, NEW.timestamp, NOW()) <= 3;
 
 CREATE TRIGGER PopularityRatingUpdateTrigger2
 AFTER DELETE
 ON PastJoin FOR EACH ROW
 UPDATE ActiveRoom
 SET popularityRating = popularityRating - 1
-WHERE OLD.roomID = ActiveRoom.roomID;
+WHERE OLD.roomID = ActiveRoom.roomID AND TIMESTAMPDIFF(MONTH, OLD.timestamp, NOW()) <= 3;
 
 DELIMITER ;;
 CREATE TRIGGER PopularityRatingUpdateTrigger3
@@ -236,10 +276,33 @@ ON PastJoin FOR EACH ROW
 BEGIN
 UPDATE ActiveRoom
 SET popularityRating = popularityRating - 1
-WHERE OLD.roomID = ActiveRoom.roomID;
+WHERE OLD.roomID = ActiveRoom.roomID AND TIMESTAMPDIFF(MONTH, OLD.timestamp, NOW()) <= 3;
 
 UPDATE ActiveRoom
 SET popularityRating = popularityRating + 1
-WHERE NEW.roomID = ActiveRoom.roomID;
+WHERE NEW.roomID = ActiveRoom.roomID AND TIMESTAMPDIFF(MONTH, NEW.timestamp, NOW()) <= 3;
 END;;
 DELIMITER ;
+
+/* automatically refresh popularity rating to not include old past joins */
+DROP EVENT IF EXISTS PopularityRatingUpdateEvent;
+
+CREATE EVENT PopularityRatingUpdateEvent
+ON SCHEDULE EVERY 1 DAY
+STARTS CURRENT_TIMESTAMP
+ENDS CURRENT_TIMESTAMP + INTERVAL 1 YEAR
+DO
+    UPDATE ActiveRoom SET popularityRating = (
+        SELECT count(*) FROM PastJoin
+        WHERE ActiveRoom.roomID = PastJoin.roomID AND TIMESTAMPDIFF(MONTH, PastJoin.timestamp, NOW()) <= 3
+    );
+
+/* automatic cleanup of old users */
+DROP EVENT IF EXISTS OldUserCleanupEvent;
+
+CREATE EVENT OldUserCleanupEvent
+ON SCHEDULE EVERY 1 DAY
+STARTS CURRENT_TIMESTAMP
+ENDS CURRENT_TIMESTAMP + INTERVAL 1 YEAR
+DO
+    DELETE FROM User WHERE NOW() > expiryDate;

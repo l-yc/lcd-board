@@ -1,7 +1,7 @@
 'use strict';
 import paper from 'paper';
 
-import { log, api, getCookie } from './utils';
+import { log, api, getCookie, setCookie } from './utils';
 import { DrawingTool, Pen, DynamicPen, FountainPen, Eraser, LaserPointer, Selector } from './DrawingTool';
 import { DrawingCanvas } from './DrawingCanvas';
 import { SocketServer } from './SocketServer';
@@ -48,6 +48,9 @@ window.onload = () => {
   log("configured paper.js canvas");
 
   //Universal setup
+  let modeStored = getCookie('LCDB_LoginMode'); //loads previously used cached login mode
+  if (modeStored == 'login' || modeStored == 'guest') currentLoginFormMode = modeStored;
+
   configureTabBar();
   configureLoginForm();
   updateLoginOverlayState();
@@ -57,6 +60,9 @@ window.onload = () => {
   dashboardUi?.setJoinRoomHandler(joinRoomHandler);
 
   onTabOpenHandlers['dashboard'] = () => {
+    let lM = currentLoginFormMode;
+    lM = lM == 'register' ? 'login' : lM;
+    dashboardUi?.updateCurrentLoginMode(lM);
     dashboardUi?.configureShowcaseCategoryItems()
   }
 
@@ -110,7 +116,19 @@ window.onload = () => {
   whiteboardUi.configurePickers();
   whiteboardUi.configureLoginForm();
 
-  //Done 
+  onTabOpenHandlers['whiteboard'] = () => {
+    let lM = currentLoginFormMode;
+    lM = lM == 'register' ? 'login' : lM;
+    whiteboardUi?.updateCurrentLoginMode(lM);
+  };
+
+
+
+  //Done
+  if (modeStored == 'login' || modeStored == 'guest') {
+    dashboardUi?.updateCurrentLoginMode(modeStored);
+    whiteboardUi?.updateCurrentLoginMode(modeStored);
+  }
   selectTabByParams();
 };
 
@@ -159,8 +177,6 @@ function configureTabBar() {
       updateLoginOverlayState();
     });
   }
-
-  tabBtnHandlers[Object.keys(tabBtnHandlers)[0]]();
 };
 
 function selectTabByParams() {
@@ -200,6 +216,7 @@ function configureLoginForm() {
       loginModeLink2.innerText = 'Register an Account...';
       submitBtn.value = "Login";
       error.classList.add('hidden');
+      setCookie('LCDB_LoginMode', 'login', 365);
       break;
     case 'register':
       pwordField.required = true;
@@ -208,6 +225,7 @@ function configureLoginForm() {
       loginModeLink2.innerText = 'Login to Existing Account...';
       submitBtn.value = "Register";
       error.classList.add('hidden');
+      setCookie('LCDB_LoginMode', 'login', 365);
       break;
     case 'guest':
       pwordField.required = false;
@@ -216,6 +234,7 @@ function configureLoginForm() {
       loginModeLink2.innerText = 'Register an Account...';
       submitBtn.value = "Login as Guest";
       error.classList.add('hidden');
+      setCookie('LCDB_LoginMode', 'guest', 365);
       break;
   }
 
@@ -252,7 +271,10 @@ function configureLoginForm() {
 
         hideLoginOverlay();
         if (currentLoginFormMode == 'register') currentLoginFormMode = 'login';
+        setCookie('LCDB_LoginMode', currentLoginFormMode, 365);
+
         dashboardUi?.updateCurrentLoginMode(currentLoginFormMode);
+        whiteboardUi?.updateCurrentLoginMode(currentLoginFormMode);
 
         selectTabByParams();
 

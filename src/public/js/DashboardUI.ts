@@ -88,6 +88,7 @@ export class DashboardUI {
       'retrievePopularRoomList', {},
       (res, status) => {
 
+        this.showcaseGrid.children[0].children[1].innerHTML = '';
         if (res.success) {
           for (let room of res.data) {
             let ele = this.configureCategoryItemElement(
@@ -100,11 +101,15 @@ export class DashboardUI {
                 }
               }]
             );
-            this.showcaseGrid.children[0].appendChild(ele);
+            this.showcaseGrid.children[0].children[1].appendChild(ele);
+          }
+          if (res.data.length == 0) {
+            let ele = this.configureCategoryItemInfo('Nothing going on at the moment.');
+            this.showcaseGrid.children[0].children[1].appendChild(ele);
           }
         } else {
           let ele = this.configureCategoryItemError(res.error);
-          this.showcaseGrid.children[0].appendChild(ele);
+          this.showcaseGrid.children[0].children[1].appendChild(ele);
         }
 
       }
@@ -114,6 +119,7 @@ export class DashboardUI {
       'retrieveFavouriteRoomList', {},
       (res, status) => {
 
+        this.showcaseGrid.children[1].children[1].innerHTML = '';
         if (res.success) {
           for (let room of res.data) {
             let ele = this.configureCategoryItemElement(
@@ -141,21 +147,31 @@ export class DashboardUI {
                 }
               }]
             );
-            this.showcaseGrid.children[1].appendChild(ele);
+            this.showcaseGrid.children[1].children[1].appendChild(ele);
+          }
+          if (res.data.length == 0) {
+            if (this.currentLoginMode == 'login') {
+              let ele = this.configureCategoryItemInfo('You have not favourited any rooms yet.');
+              this.showcaseGrid.children[1].children[1].appendChild(ele);
+            } else {
+              let ele = this.configureCategoryItemInfo('Register an account to favourite rooms!');
+              this.showcaseGrid.children[1].children[1].appendChild(ele);
+            }
           }
         } else {
           let ele = this.configureCategoryItemError(res.error);
-          this.showcaseGrid.children[1].appendChild(ele);
+          this.showcaseGrid.children[1].children[1].appendChild(ele);
         }
 
       }
     );
     api(
       'retrievePastJoinedRooms', {},
-      (data, status) => {
+      (res, status) => {
 
-        if (data.success) {
-          for (let room of data.data) {
+        this.showcaseGrid.children[2].children[1].innerHTML = '';
+        if (res.success) {
+          for (let room of res.data) {
             let t = new Date(room.joinTimestamp);
             let ele = this.configureCategoryItemElement(
               room.displayName,
@@ -181,11 +197,20 @@ export class DashboardUI {
                 }
               }]
             );
-            this.showcaseGrid.children[2].appendChild(ele);
+            this.showcaseGrid.children[2].children[1].appendChild(ele);
+          }
+          if (res.data.length == 0) {
+            if (this.currentLoginMode == 'login') {
+              let ele = this.configureCategoryItemInfo('You have not joined any room yet.');
+              this.showcaseGrid.children[2].children[1].appendChild(ele);
+            } else {
+              let ele = this.configureCategoryItemInfo('Register an account to see your past sessions!');
+              this.showcaseGrid.children[2].children[1].appendChild(ele);
+            }
           }
         } else {
-          let ele = this.configureCategoryItemError(data.error);
-          this.showcaseGrid.children[2].appendChild(ele);
+          let ele = this.configureCategoryItemError(res.error);
+          this.showcaseGrid.children[2].children[1].appendChild(ele);
         }
 
       }
