@@ -1,5 +1,5 @@
 const gulp = require('gulp');
-const sass = require('gulp-sass');
+const sass = require('gulp-dart-sass');
 const ts = require('gulp-typescript');
 const webpack = require('webpack-stream');
 
@@ -18,6 +18,16 @@ gulp.task('scripts', function () {
     .pipe(webpack(require('./webpack.config.js')))
     .pipe(gulp.dest('./dist/public/js/'));
 });
+
+gulp.task('scripts', function () {
+  const tsProject = ts.createProject('./tsconfig.json');
+  return gulp.src(['./src/public/js/**/*.ts', '!./src/public/js/lib/**/*'])
+    //.pipe(tsProject())
+    //.js
+    .pipe(webpack(require('./webpack-dev.config.js')))
+    .pipe(gulp.dest('./dist/public/js/'));
+});
+
 
 gulp.task('main', function () {
   const tsProject = ts.createProject('./tsconfig.json');
@@ -58,7 +68,7 @@ gulp.task('watch scripts', function () {
   return gulp.src(['./src/public/js/**/*.ts', '!./src/public/js/lib/**/*'])
     //.pipe(tsProject())
     //.js
-    .pipe(webpack(require('./webpack.config.js')))
+    .pipe(webpack(require('./webpack-dev-watch.config.js')))
     .pipe(gulp.dest('./dist/public/js/'));
 });
 
@@ -83,4 +93,4 @@ gulp.task('watch', gulp.parallel(
 ));
 
 /** Default **/
-gulp.task('default', gulp.series('watch'));
+gulp.task('default', gulp.series('build', 'watch'));
