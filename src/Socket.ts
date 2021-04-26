@@ -215,7 +215,7 @@ class SocketServer {
   private rooms: Map<string,Room>;
 
   constructor(http: any) {
-    this.io = SocketIO(http);
+    this.io = new SocketIO.Server(http);
 
     this.sockets = new Map();
     this.users = new Map();
