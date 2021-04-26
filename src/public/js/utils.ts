@@ -35,7 +35,7 @@ function api(name: string, data: any, result: (data: any, status: number) => voi
   if (['login', 'register', 'guest', 'logout'].indexOf(name) == -1 && !name.startsWith('api/')) {
     name = 'api/' + name;
   }
-  fetch("/" + name, {
+  fetch(window.location.pathname + name, {
     method: 'POST',
     mode: 'cors',
     headers: {
