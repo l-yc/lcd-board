@@ -72,7 +72,6 @@ canvas[resize] {
 }
 
 /* members list container */
-
 #members-container {
   margin: 0px 8px;
   padding: 0;
@@ -90,6 +89,16 @@ canvas[resize] {
 }
 #members-container * {
   display: inline-block;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+#members-container::-webkit-scrollbar {
+  display: none; /**/
+}
+/* Hide scrollbar for IE, Edge and Firefox */
+#members-container {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
 
 /* all drawing picker containers and stuff */
@@ -217,42 +226,46 @@ input.textFieldOption {
 }
 
 #login-overlay form {
-    display: flex;
-    flex-flow: column nowrap;
-    position: relative;
-    transform: translateY(-50%);
-    top: 50%;
-    width: 300px;
-    margin: auto;
-    padding: 16px;
-    background-color: white;
-    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-flow: column nowrap;
+  position: relative;
+  transform: translateY(-50%);
+  top: 50%;
+  width: 300px;
+  margin: auto;
+  padding: 16px;
+  background-color: white;
+  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.2);
 }
 
 #login-overlay form * {
-    margin: 8px;
-    display: block;
-    padding: 12px;
-    appearance: none;
-    -webkit-appearance: none;
-    border-radius: 4px;
-    transition: all 0.2s ease-in-out;
+  margin: 8px;
+  display: block;
+  padding: 12px;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 4px;
+  transition: all 0.2s ease-in-out;
+}
+
+#login-overlay form h1 {
+  text-align: center;
 }
 
 #login-overlay form input[type=text] {
-    background: white;
-    border: 1px solid #ddd;
+  background: white;
+  border: 1px solid #ddd;
 }
 #login-overlay form input[type=submit] {
-    background: #08f;
-    border: 1px solid #08f;
-    color: white; 
+  background: #08f;
+  border: 1px solid #08f;
+  color: white; 
 }
 #login-overlay form input[type=submit]:hover {
-    background: #fff;
-    color: #08f;
+  background: #fff;
+  color: #08f;
 }
 #login-overlay form input[type=submit]:active {
-    border: 1px solid #ddd;
-    color: #ddd;
+  border: 1px solid #ddd;
+  color: #ddd;
 }

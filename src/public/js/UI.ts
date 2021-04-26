@@ -268,6 +268,28 @@ export class UI {
 
 
   // login handlers
+  public logout() {
+    this.drawingCanvas.getSocketServer()?.leave();
+  }
+
+  public login(uname: string | null, room: string | null) {
+    this.logout();
+
+    if (!uname || !room) {
+      alert('You need to join a room with a username!');
+      return;
+    }
+    this.loginUsername = uname;
+    this.loginRoom = room;
+
+    this.drawingCanvas.getSocketServer()?.register(uname);
+    this.drawingCanvas.getSocketServer()?.join(room);
+
+    const submit = document.querySelector('input[type=submit]') as HTMLInputElement;
+    submit.disabled = true;
+    submit.value = "Loading...";
+  }
+
   private loginUsername: string | null = null;
   private loginRoom: string | null = null;
   public configureLoginForm() {
@@ -281,20 +303,7 @@ export class UI {
       let data = new FormData(form);
       let uname = data.get('username') as string;
       let room = data.get('room') as string;
-      if (!uname || !room) {
-        alert('You need to join a room with a username!');
-        return;
-      }
-
-      this.loginUsername = uname;
-      this.loginRoom = room;
-
-      this.drawingCanvas.getSocketServer()?.register(uname);
-      this.drawingCanvas.getSocketServer()?.join(room);
-
-      submit.disabled = true;
-      submit.value = "Loading...";
-
+      this.login(uname, room);
     });
 
     usernameField.addEventListener('keypress', (e) => {
@@ -303,6 +312,9 @@ export class UI {
         roomField.focus();
       }
     });
+
+    const logoutButton = document.getElementById('disconnectBtn') as HTMLElement;
+    logoutButton.onclick = (e) => this.logout();
   }
 
   public hideLoginOverlay() {
@@ -349,7 +361,7 @@ export class UI {
         submit.value = "Login";
 
         if (options && !options.userInitiated) {
-            alert('error: lost connection to the server');
+          alert('error: lost connection to the server');
         }
       }
     }

@@ -103,6 +103,16 @@ export class SocketServer {
     }
   }
 
+  leave() {
+    let room = this.room;
+    if (room) {
+      log("leave room", room);
+      this.socket.emit('leave', room);
+      this.room = null;
+      this.ui?.performLogout({userInitiated: true});
+    }
+  }
+
   sendEvent(event: BoardEvent) {
     if (this.room) {
       let copy: BoardEvent = { ...event };

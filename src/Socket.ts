@@ -182,8 +182,10 @@ class Socket {
 
   private onLeave(): void {
     if (this.room) {
+      console.log('%s left %s', this.socket.id, this.room);
       this.socket.leave(this.room);
       this.server.setUserRoom(this.socket.id, null);
+      this.room = null;
     }
   }
 
